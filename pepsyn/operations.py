@@ -38,50 +38,55 @@ def tile(seq, length, overlap):
         yield (start, end, seq[start:end])
 
 
-def assign_codons(seq, reverse_translator):
+def reverse_translate(seq, codon_sampler):
     """
     seq is a Bio.Seq.Seq
-    reverse_translator is a ReverseTranslator
+    codon_sampler is a CodonSampler
     """
-    # TODO: check that protein alphabets match
     codons = []
     for aa in seq:
-        codons.append(reverse_translator.sample_codon(aa))
-    return sum(codons, Seq('', reverse_translator._nucleotide_alphabet))
+        codons.append(codon_sampler.sample_codon(aa))
+    return sum(codons, Seq('', codon_sampler.nucleotide_alphabet))
 
 
-def remove_cds_restriction_sites(seq, site, reverse_translator, cds_start=None,
-                                 cds_end=None):
+def remove_site_from_cds(seq, site, codon_sampler, cds_start=None,
+                         cds_end=None):
     """
     seq is a Bio.Seq.Seq
     site is a Bio.Seq.Seq
-    reverse_translator is a ReverseTranslator
-    start, end are int specifying the location of the CDS; defaults to full seq
+    codon_sampler is a CodonSampler
+    cds_start, cds_end are int; defaults to full seq
     """
     site_start = seq.find(site)
     if site_start == -1:
         return seq
+    site_end = site_start + len(site)
     if cds_start is None:
         cds_start = 0
     if cds_end is None:
         cds_end = len(seq)
+    if site_end <= cds_start or site_start >= cds_end:
+        # site doesn't overlap the CDS => no-op
+        return seq
     if (cds_end - cds_start) % 3 != 0:
         raise PepsynError('CDS length is not multiple of 3')
-    if site_start + len(site) <= cds_start or site_start >= cds_end:
-        raise PepsynError('Restriction site does not overlap CDS')
-    mutseq = seq.tomutable()
+
     # computes offsets for the site boundaries to align them to coding frame
     start_offset = (site_start - cds_start) % 3
-    end_offset = (site_start + len(site) - cds_start) % 3
-    repl_start = max(site_start - start_offset, 0)
-    repl_end = min(site_start + len(site) - end_offset + 3, len(seq))
-    trans = seq[repl_start:repl_end].translate(table=reverse_translator._table)
-    candidate = assign_codons(trans, reverse_translator)
+    # negative because the end coord must be pushed to the right
+    end_offset = -(site_end - cds_start) % 3
+    repl_start = max(site_start - start_offset, cds_start)
+    repl_end = min(site_end + end_offset, cds_end)
+
+    # compute candidate recoded sequence
+    trans = seq[repl_start:repl_end].translate(table=codon_sampler.table)
+    candidate = assign_codons(trans, codon_sampler)
+    mutseq = seq.tomutable()
     mutseq[repl_start:repl_end] = candidate
     if mutseq.find(site) == -1:
         return mutseq.toseq()
     else:
         # TODO: this can cause a maximum recursion error
-        return remove_cds_restriction_sites(
-            mutseq.toseq(), site, reverse_translator, cds_start=cds_start,
+        return remove_site_from_cds(
+            mutseq.toseq(), site, codon_sampler, cds_start=cds_start,
             cds_end=cds_end)
