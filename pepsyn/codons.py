@@ -26,41 +26,72 @@ class CodonUsage(object):
         # TODO: input verification:
         # all codons
         # sums to 1
-        self._freq = freq
-        self._nucleotide_alphabet = freq.keys().__iter__().__next__().alphabet
+        self.freq = freq
+        self.nucleotide_alphabet = freq.keys().__iter__().__next__().alphabet
 
 
-class ReverseTranslator(object):
+class CodonSampler(object):
 
-    def __init__(self, usage, table=standard_dna_table):
+    def __init__(self, table=None):
         """
         table is Bio.Data.CodonTable.NCBICodonTableDNA
-        usage is CodonUsage
         """
-        self.table = table
-        self.usage = usage
-        self._nucleotide_alphabet = self.table.nucleotide_alphabet
-        self._protein_alphabet = self.table.protein_alphabet
-        if table.nucleotide_alphabet != usage._nucleotide_alphabet:
-            raise ValueError('table and usage need to use the same nucleotide'
-                             'Alphabet')
-
+        self.table = table if table is not None else standard_dna_table
+        self.nucleotide_alphabet = self.table.nucleotide_alphabet
+        self.protein_alphabet = self.table.protein_alphabet
         # generate aa -> codon mapping
-        self._aa2codons = {}
+        self.aa2codons = {}
         for (codon, aa) in self.table.forward_table.items():
             c = Seq(codon, self.table.nucleotide_alphabet)
-            self._aa2codons.setdefault(aa, []).append(c)
-
-        # precalculate distribution (p) for each amino acid
-        self._aa2p = {}
-        for aa in self.table.protein_alphabet.letters:
-            unnormed = np.asarray(
-                [self.usage._freq[c] for c in self._aa2codons[aa]])
-            self._aa2p[aa] = unnormed / unnormed.sum()
+            self.aa2codons.setdefault(aa, []).append(c)
 
     def sample_codon(self, aa):
-        i = np.random.choice(range(len(self._aa2codons[aa])), p=self._aa2p[aa])
-        return self._aa2codons[aa][i]
+        """
+        aa is str for single-letter IUPAC AA
+        """
+        raise NotImplementedError()
+
+
+class UniformCodonSampler(CodonSampler):
+
+    def __init__(self, table=None):
+        """
+        table is Bio.Data.CodonTable.NCBICodonTableDNA
+        """
+        super().__init__(table)
+
+    def sample_codon(self, aa):
+        i = np.random.randint(len(self.aa2codons[aa]))
+        return self.aa2codons[aa][i]
+
+
+class FreqWeightedCodonSampler(CodonSampler):
+
+    def __init__(self, table=None, usage=None):
+        """
+        table is Bio.Data.CodonTable.NCBICodonTableDNA
+        usage is CodonUsage; None means uniform
+        """
+        super().__init__(table)
+        if usage is None:
+            raise ValueError('Must provide a CodonUsage object')
+        if table.nucleotide_alphabet != usage.nucleotide_alphabet:
+            raise ValueError('table and usage need to use the same nucleotide'
+                             'Alphabet')
+        # precalculate distribution (p) for each amino acid
+        self.aa2p = {}
+        if self.usage is not None:
+            for aa in self.table.protein_alphabet.letters:
+                unnormed = np.asarray(
+                    [self.usage.freq[c] for c in self.aa2codons[aa]])
+                self.aa2p[aa] = unnormed / unnormed.sum()
+
+    def sample_codon(self, aa):
+        """
+        aa is str for single-letter IUPAC AA
+        """
+        i = np.random.choice(range(len(self.aa2codons[aa])), p=self.aa2p[aa])
+        return self.aa2codons[aa][i]
 
 
 # http://www.kazusa.or.jp/codon/cgi-bin/showcodon.cgi?species=37762
