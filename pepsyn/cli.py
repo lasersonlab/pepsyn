@@ -15,10 +15,14 @@
 
 from click import group, command, option, argument, File, Choice
 
+from Bio import SeqIO
+from Bio.Seq import Seq
+from Bio.SeqRecord import SeqRecord
 from Bio.Alphabet.IUPAC import unambiguous_dna
 from Bio.Restriction.Restriction import enzymedict
 
-from pepsyn.operations import reverse_translate
+from pepsyn.operations import (
+    reverse_translate, remove_site_from_cds, tile as tile_op)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage)
 
@@ -42,9 +46,9 @@ argument_output = argument('output', type=File('w'))
 def tile(input, output, length, overlap):
     """tile a set of sequences"""
     for seqrecord in SeqIO.parse(input, 'fasta'):
-        for (start, end, t) in tile(seqrecord.seq, length, overlap):
+        for (start, end, t) in tile_op(seqrecord.seq, length, overlap):
                 output_title = '{}|{}-{}'.format(seqrecord.id, start, end)
-                output_record = SeqRecord(t, output_title)
+                output_record = SeqRecord(t, output_title, description='')
                 SeqIO.write(output_record, output, 'fasta')
 
 
@@ -56,7 +60,7 @@ def prefix(input, output, prefix):
     """add a prefix to each sequence"""
     for seqrecord in SeqIO.parse(input, 'fasta'):
         newseq = prefix + seqrecord.seq
-        seqrecord.seq = prefix
+        seqrecord.seq = newseq
         SeqIO.write(seqrecord, output, 'fasta')
 
 
@@ -80,7 +84,7 @@ def suffix(input, output, suffix):
 @option('--codon-usage', '-u', default='ecoli', help='ONLY ECOLI IMPLEMENTED')
 @option('--sampler', default='weighted', show_default=True,
         type=Choice(['weighted', 'uniform']), help='Codon sampling method')
-def revtrans(input, codon_table, codon_usage, sampler):
+def revtrans(input, output, codon_table, codon_usage, sampler):
     """reverse translate amino acid sequences into DNA"""
     if sampler == 'weighted':
         codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
@@ -89,7 +93,7 @@ def revtrans(input, codon_table, codon_usage, sampler):
     for seqrecord in SeqIO.parse(input, 'fasta'):
         dna_id = seqrecord.id
         dna_seq = reverse_translate(seqrecord.seq, codon_sampler)
-        SeqIO.write(SeqRecord(dna_seq, dna_id), output, 'fasta')
+        SeqIO.write(SeqRecord(dna_seq, dna_id, description=''), output, 'fasta')
 
 
 @cli.command()
@@ -120,7 +124,7 @@ def removesite(input, output, site, start, end, codon_table, codon_usage,
         id_ = seqrecord.id
         seq = remove_site_from_cds(seqrecord.seq, site, codon_sampler, start,
                                    end)
-        SeqIO.write(SeqRecord(seq, id_), output, 'fasta')
+        SeqIO.write(SeqRecord(seq, id_, description=''), output, 'fasta')
 
 
 @cli.command()
