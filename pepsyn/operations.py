@@ -15,6 +15,8 @@
 
 from Bio.Seq import Seq
 
+from pepsyn.error import PepsynError
+
 def tile(seq, length, overlap):
     if length <= 0:
         raise ValueError('length must be a positive integer')
@@ -80,13 +82,12 @@ def remove_site_from_cds(seq, site, codon_sampler, cds_start=None,
 
     # compute candidate recoded sequence
     trans = seq[repl_start:repl_end].translate(table=codon_sampler.table)
-    candidate = assign_codons(trans, codon_sampler)
-    mutseq = seq.tomutable()
-    mutseq[repl_start:repl_end] = candidate
-    if mutseq.find(site) == -1:
-        return mutseq.toseq()
+    replacement = reverse_translate(trans, codon_sampler)
+    candidate = seq[:repl_start] + replacement + seq[repl_end:]
+    if candidate.find(site) == -1:
+        return candidate
     else:
         # TODO: this can cause a maximum recursion error
         return remove_site_from_cds(
-            mutseq.toseq(), site, codon_sampler, cds_start=cds_start,
+            candidate, site, codon_sampler, cds_start=cds_start,
             cds_end=cds_end)

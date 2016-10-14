@@ -75,7 +75,8 @@ class FreqWeightedCodonSampler(CodonSampler):
         super().__init__(table)
         if usage is None:
             raise ValueError('Must provide a CodonUsage object')
-        if table.nucleotide_alphabet != usage.nucleotide_alphabet:
+        self.usage = usage
+        if self.table.nucleotide_alphabet != self.usage.nucleotide_alphabet:
             raise ValueError('table and usage need to use the same nucleotide'
                              'Alphabet')
         # precalculate distribution (p) for each amino acid

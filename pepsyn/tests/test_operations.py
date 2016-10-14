@@ -14,17 +14,19 @@
 
 from pytest import raises
 from Bio.Seq import Seq
-from Bio.Alphabet.IUPAC import protein
+from Bio.Alphabet.IUPAC import protein, unambiguous_dna
 import numpy as np
 
-from pepsyn.operations import tile, assign_codons
-from pepsyn.codons import ReverseTranslator, ecoli_codon_usage
+from pepsyn.operations import tile, reverse_translate, remove_site_from_cds
+from pepsyn.codons import (
+    FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage)
+from pepsyn.error import PepsynError
 
 
-protein_seq = Seq('METMSDYSKEVSEALSALRGELSALSAAISNTVRAGSYSAPVAKDCKAGHCDSKAVL',
-                  protein)
+protein_seq = Seq(
+    'METMSDYSKEVSEALSALRGELSALSAAISNTVRAGSYSAPVAKDCKAGHCDSKAVL', protein)
 short_protein_seq = Seq('METMSD', protein)
-reverse_translator = ReverseTranslator(ecoli_codon_usage)
+all_aa_protein_seq = Seq('ACDEFGHIKLMNPQRSTVWY', protein)
 
 
 class TestTile(object):
@@ -99,3 +101,104 @@ class TestTile(object):
         overlap = -3
         with raises(ValueError):
             tiles = list(tile(protein_seq, length, overlap))
+
+
+class TestReverseTranslate(object):
+
+    def test_freq_weighted_sampler(self):
+        codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
+        dna_seq = reverse_translate(all_aa_protein_seq, codon_sampler)
+        assert dna_seq.translate(table=codon_sampler.table) == all_aa_protein_seq
+
+    def test_uniform_sampler(self):
+        codon_sampler = UniformCodonSampler()
+        dna_seq = reverse_translate(all_aa_protein_seq, codon_sampler)
+        assert dna_seq.translate(table=codon_sampler.table) == all_aa_protein_seq
+
+
+class TestSiteRemoval(object):
+
+    # prefix and suffix are each 10 bases, CDS is 18 bases
+    cds_start = 10
+    cds_end = 28
+    EcoRI = Seq('GAATTC', unambiguous_dna)
+    codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
+
+    def test_no_site(self):
+        dna_seq = Seq(
+            'GAGATCCGGTCCATATCTTATTCAACGCAAGTTGTTAT', unambiguous_dna)
+        new_seq = remove_site_from_cds(
+            dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
+            self.cds_end)
+        assert new_seq.find(self.EcoRI) == -1
+        assert new_seq == dna_seq
+
+    def test_with_site_in_cds(self):
+        dna_seq = Seq(
+            'GAGATCCGGTCCATATCGAATTCAACGCAAGTTGTTAT', unambiguous_dna)
+        new_seq = remove_site_from_cds(
+            dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
+            self.cds_end)
+        orig_trans = dna_seq[self.cds_start:self.cds_end].translate(
+            table=self.codon_sampler.table)
+        new_trans = new_seq[self.cds_start:self.cds_end].translate(
+            table=self.codon_sampler.table)
+        assert new_seq.find(self.EcoRI) == -1
+        assert new_seq != dna_seq
+        assert len(new_seq) == len(dna_seq)
+        assert new_seq[:self.cds_start] == dna_seq[:self.cds_start]
+        assert new_seq[self.cds_end:] == dna_seq[self.cds_end:]
+        assert new_trans == orig_trans
+
+    def test_with_site_on_left_boundary(self):
+        dna_seq = Seq(
+            'GAGATCCGGAATTCATCTTATTCAACGCAAGTTGTTAT', unambiguous_dna)
+        new_seq = remove_site_from_cds(
+            dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
+            self.cds_end)
+        orig_trans = dna_seq[self.cds_start:self.cds_end].translate(
+            table=self.codon_sampler.table)
+        new_trans = new_seq[self.cds_start:self.cds_end].translate(
+            table=self.codon_sampler.table)
+        assert new_seq.find(self.EcoRI) == -1
+        assert new_seq != dna_seq
+        assert len(new_seq) == len(dna_seq)
+        assert new_seq[:self.cds_start] == dna_seq[:self.cds_start]
+        assert new_seq[self.cds_end:] == dna_seq[self.cds_end:]
+        assert new_trans == orig_trans
+
+    def test_with_site_on_left_boundary(self):
+        dna_seq = Seq(
+            'GAGATCCGGTCCATATCTTATTCGAATTCAGTTGTTAT', unambiguous_dna)
+        new_seq = remove_site_from_cds(
+            dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
+            self.cds_end)
+        orig_trans = dna_seq[self.cds_start:self.cds_end].translate(
+            table=self.codon_sampler.table)
+        new_trans = new_seq[self.cds_start:self.cds_end].translate(
+            table=self.codon_sampler.table)
+        assert new_seq.find(self.EcoRI) == -1
+        assert new_seq != dna_seq
+        assert len(new_seq) == len(dna_seq)
+        assert new_seq[:self.cds_start] == dna_seq[:self.cds_start]
+        assert new_seq[self.cds_end:] == dna_seq[self.cds_end:]
+        assert new_trans == orig_trans
+
+    def test_with_site_outside_cds(self):
+        dna_seq = Seq(
+            'GAGATCCGGTCCATATCTTATTCAACGCAAGAATTCAT', unambiguous_dna)
+        new_seq = remove_site_from_cds(
+            dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
+            self.cds_end)
+        assert new_seq.find(self.EcoRI) >= 0
+        assert new_seq == dna_seq
+
+    def test_bad_cds_with_site(self):
+        # NOTE: CDS is different in this test
+        cds_start = 10
+        cds_end = 27
+        dna_seq = Seq(
+            'GAGATCCGGAATTCATCTTATTCAACGAAGTTGTTAT', unambiguous_dna)
+        with raises(PepsynError):
+            new_seq = remove_site_from_cds(
+                dna_seq, self.EcoRI, self.codon_sampler, cds_start, cds_end)
