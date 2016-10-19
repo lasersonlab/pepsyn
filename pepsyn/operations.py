@@ -24,19 +24,19 @@ def tile(seq, length, overlap):
         raise ValueError('overlap must be a nonnegative integer')
     if overlap >= length:
         raise ValueError('length must be greater than overlap')
-    if len(seq) < length:
-        raise ValueError('length cannot be larger than the tiled seq')
+    seqlen = len(seq)
     end = length
-    while end < len(seq):
+    while end < seqlen:
         start = end - length
         yield (start, end, seq[start:end])
         end += length - overlap
-    if end == len(seq):
+    if end == seqlen:
         start = end - length
         yield (start, end, seq[start:end])
     else:
-        start = len(seq) - length
-        end = len(seq)
+        # we lower-bound at zero bc of the edge case where seqlen > length
+        start = max(seqlen - length, 0)
+        end = seqlen
         yield (start, end, seq[start:end])
 
 

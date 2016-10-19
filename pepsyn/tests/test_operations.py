@@ -73,10 +73,12 @@ class TestTile(object):
         assert tiles[2] == Seq('GSYSAPVAKDCKAGHCDSKAVL', protein)
 
     def test_length_longer_than_seq(self):
+        # import pytest; pytest.set_trace()
         length = len(protein_seq) + 5
         overlap = 5
-        with raises(ValueError):
-            tiles = list(tile(protein_seq, length, overlap))
+        tiles = list(tile(protein_seq, length, overlap))
+        assert len(tiles) == 1
+        assert tiles[0][2] == protein_seq
 
     def test_overlap_longer_than_length(self):
         length = 10
