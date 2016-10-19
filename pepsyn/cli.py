@@ -135,6 +135,7 @@ def removesite(input, output, site, clip_left, clip_right, codon_table,
 @argument_input
 @option('--site', help='Site to find (e.g., EcoRI, AGCCT); case sensitive')
 def findsite(input, site):
+    """find locations of a site"""
     if site in enzymedict:
         query = Seq(enzymedict[site]['site'], unambiguous_dna)
     else:
