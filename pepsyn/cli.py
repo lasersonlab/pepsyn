@@ -100,15 +100,17 @@ def revtrans(input, output, codon_table, codon_usage, sampler):
 @argument_input
 @argument_output
 @option('--site', help='Site to remove (e.g., EcoRI, AGCCT); case sensitive')
-@option('--start', type=int, help='Start position of CDS (Pythonic coords)')
-@option('--end', type=int, help='End position of CDS (Pythonic coords)')
+@option('--clip-left', type=int,
+        help='Number of bases to clip from start of sequence to get to CDS')
+@option('--clip-right', type=int,
+        help='Number of bases to clip from end of sequence to get to CDS')
 @option('--codon-table', '-t', default='standard',
         help='ONLY STANDARD TABLE IMPLEMENTED')
 @option('--codon-usage', '-u', default='ecoli', help='ONLY ECOLI IMPLEMENTED')
 @option('--sampler', default='weighted', show_default=True,
         type=Choice(['weighted', 'uniform']), help='Codon sampling method')
-def removesite(input, output, site, start, end, codon_table, codon_usage,
-               sampler):
+def removesite(input, output, site, clip_left, clip_right, codon_table,
+               codon_usage, sampler):
     """remove site from each sequence's CDS by recoding"""
     if sampler == 'weighted':
         codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
@@ -122,9 +124,26 @@ def removesite(input, output, site, start, end, codon_table, codon_usage,
 
     for seqrecord in SeqIO.parse(input, 'fasta'):
         id_ = seqrecord.id
-        seq = remove_site_from_cds(seqrecord.seq, site, codon_sampler, start,
-                                   end)
+        cds_start = clip_left
+        cds_end = len(seqrecord) - clip_right
+        seq = remove_site_from_cds(seqrecord.seq, site, codon_sampler,
+                                   cds_start, cds_end)
         SeqIO.write(SeqRecord(seq, id_, description=''), output, 'fasta')
+
+
+@cli.command()
+@argument_input
+@option('--site', help='Site to find (e.g., EcoRI, AGCCT); case sensitive')
+def findsite(input, site):
+    if site in enzymedict:
+        query = Seq(enzymedict[site]['site'], unambiguous_dna)
+    else:
+        query = Seq(site, unambiguous_dna)
+    for seqrecord in SeqIO.parse(input, 'fasta'):
+        id_ = seqrecord.id
+        idx = seqrecord.seq.find(query)
+        if idx >= 0:
+            print('{}|{}|{}'.format(id_, site, idx), flush=True)
 
 
 @cli.command()

@@ -75,5 +75,5 @@ cat pepsyn/tests/proteins.fasta \
     | pepsyn revtrans - - \
     | pepsyn prefix -p ACGGG - - \
     | pepsyn suffix -s TGCTG - - \
-    | pepsyn removesite --site EcoRI --start 5 --end 35 - -
+    | pepsyn removesite --site EcoRI --clip-left 5 --clip-right 35 - -
 ```
