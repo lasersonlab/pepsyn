@@ -13,8 +13,12 @@
 # limitations under the License.
 
 
-from click import group, command, option, argument, File, Choice
+from logging import captureWarnings
 
+# biopython has a bunch of annoying warnings bc Seq comparisons changed
+captureWarnings(True)
+
+from click import group, command, option, argument, File, Choice
 from Bio import SeqIO
 from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
