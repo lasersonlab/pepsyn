@@ -17,7 +17,9 @@ from Bio.Seq import Seq
 from Bio.Alphabet.IUPAC import protein, unambiguous_dna
 import numpy as np
 
-from pepsyn.operations import tile, reverse_translate, remove_site_from_cds
+from pepsyn.operations import (
+    tile, reverse_translate, remove_site_from_cds, x_to_ggsg,
+    disambiguate_iupac_aa)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage)
 from pepsyn.error import PepsynError
@@ -204,3 +206,106 @@ class TestSiteRemoval(object):
         with raises(PepsynError):
             new_seq = remove_site_from_cds(
                 dna_seq, self.EcoRI, self.codon_sampler, cds_start, cds_end)
+
+
+class TestLinkerReplacement(object):
+
+    def test_null_seq(self):
+        p = Seq('', protein)
+        r = x_to_ggsg(p)
+        assert p == r
+
+    def test_no_Xs(self):
+        p = Seq('GYTTRS', protein)
+        r = x_to_ggsg(p)
+        assert p == r
+
+    def test_Xs_prefix(self):
+        p = Seq('XXXGYTTRS', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GGSGYTTRS', protein)
+
+    def test_Xs_suffix(self):
+        p = Seq('GYTTRSXXXX', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GYTTRSGGSG', protein)
+
+    def test_Xs_infix(self):
+        p = Seq('GYTXXXXXTRS', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GYTGGSGGTRS', protein)
+
+    def test_multiple_stretches(self):
+        p = Seq('XGYTXXXTRXXS', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GGYTGGSTRGGS', protein)
+
+    def test_single_X(self):
+        p = Seq('GYTXTRS', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GYTGTRS', protein)
+        p = Seq('XGYTTRS', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GGYTTRS', protein)
+        p = Seq('GYTTRSX', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GYTTRSG', protein)
+
+    def test_double_X(self):
+        p = Seq('GYTXXTRS', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GYTGGTRS', protein)
+
+    def test_many_single_Xs(self):
+        p = Seq('GXYTXTXRXS', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GGYTGTGRGS', protein)
+
+    def test_many_Xs(self):
+        p = Seq('GYTXXXXXXXXXTRS', protein)
+        r = x_to_ggsg(p)
+        assert r == Seq('GYTGGSGGGSGGTRS', protein)
+
+
+class TestProteinDisambig(object):
+
+    def test_unambig(self):
+        proteins = list(disambiguate_iupac_aa(all_aa_protein_seq))
+        assert len(proteins) == 1
+        assert proteins[0] == all_aa_protein_seq
+
+    def test_B(self):
+        ambig = Seq('AABAA', protein)
+        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        assert disambig == {'AADAA', 'AANAA'}
+
+    def test_X(self):
+        ambig = Seq('AAXAA', protein)
+        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        assert disambig == {'AA{}AA'.format(aa) for aa in all_aa_protein_seq}
+
+    def test_Z(self):
+        ambig = Seq('AAZAA', protein)
+        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        assert disambig == {'AAEAA', 'AAQAA'}
+
+    def test_J(self):
+        ambig = Seq('AAJAA', protein)
+        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        assert disambig == {'AALAA', 'AAIAA'}
+
+    def test_U(self):
+        ambig = Seq('AAUAA', protein)
+        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        assert disambig == {'AACAA'}
+
+    def test_O(self):
+        ambig = Seq('AAOAA', protein)
+        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        assert disambig == {'AAKAA'}
+
+    def test_adjacent_ambig(self):
+        ambig = Seq('AAJJAA', protein)
+        proteins = set(disambiguate_iupac_aa(ambig))
+        assert len(proteins) == 4
+        assert proteins == {'AALLAA', 'AALIAA', 'AAILAA', 'AAIIAA'}

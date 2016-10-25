@@ -26,7 +26,8 @@ from Bio.Alphabet.IUPAC import unambiguous_dna
 from Bio.Restriction.Restriction import enzymedict
 
 from pepsyn.operations import (
-    reverse_translate, remove_site_from_cds, tile as tile_op)
+    reverse_translate, remove_site_from_cds, x_to_ggsg, disambiguate_iupac_aa,
+    tile as tile_op)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage)
 
@@ -137,6 +138,39 @@ def removesite(input, output, site, clip_left, clip_right, codon_table,
 
 @cli.command()
 @argument_input
+@argument_output
+def x2ggsg(input, output):
+    """replace stretches of Xs with Serine-Glycine linker (GGSG pattern)"""
+    for seqrecord in SeqIO.parse(input, 'fasta'):
+        seq = seqrecord.seq
+        replacement = x_to_ggsg(seq)
+        seqrecord.seq = replacement
+        if replacement != seq:
+            seqrecord.id = '{}|{}'.format(seqrecord.id, 'withGSlinker')
+        SeqIO.write(seqrecord, output, 'fasta')
+
+
+@cli.command()
+@argument_input
+@argument_output
+def disambiguateaa(input, output):
+    """replace ambiguous (IUPAC) AAs with unambiguous ones (e.g. Z => E/Q)
+
+    B => DN, X => ACDEFGHIKLMNPQRSTVWY, Z => EQ, J => LI,
+    U => C (selenocysteine), O => K (pyrrolysine)
+    """
+    for seqrecord in SeqIO.parse(input, 'fasta'):
+        id_ = seqrecord.id
+        ambig = seqrecord.seq
+        for (i, unambig) in enumerate(disambiguate_iupac_aa(ambig)):
+            if unambig != ambig:
+                seqrecord.id = '{}|disambig_{}'.format(id_, i + 1)
+                seqrecord.seq = unambig
+            SeqIO.write(seqrecord, output, 'fasta')
+
+
+@cli.command()
+@argument_input
 @option('--site', help='Site to find (e.g., EcoRI, AGCCT); case sensitive')
 def findsite(input, site):
     """find locations of a site"""
@@ -154,5 +188,5 @@ def findsite(input, site):
 @cli.command()
 @argument_input
 def stats(input):
-    """compute some sequence statistics"""
+    """NOT IMPL'd: compute some sequence statistics"""
     pass

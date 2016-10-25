@@ -12,12 +12,38 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+"""Operations on sequences.
+
+This module should generally operate on Bio.Seq.Seq objects.
+"""
+
+import re
+from itertools import cycle
+
 
 from Bio.Seq import Seq
+from Bio.Data.IUPACData import protein_letters
+
 
 from pepsyn.error import PepsynError
 
+
+ambiguous_protein_values = {
+    'B': 'DN',
+    'X': protein_letters,
+    'Z': 'EQ',
+    'J': 'LI',
+    'U': 'C',  # selenocysteine
+    'O': 'K',  # pyrrolysine
+}
+extended_protein_letters = ''.join(ambiguous_protein_values.keys())
+
+
 def tile(seq, length, overlap):
+    """generator
+    seq is a Bio.Seq.Seq
+    length, overlap are int
+    """
     if length <= 0:
         raise ValueError('length must be a positive integer')
     if overlap < 0:
@@ -49,6 +75,46 @@ def reverse_translate(seq, codon_sampler):
     for aa in seq:
         codons.append(codon_sampler.sample_codon(aa))
     return sum(codons, Seq('', codon_sampler.nucleotide_alphabet))
+
+
+def _ggsg_generator():
+    """generates infinite sequence of 'G', 'G', 'S', 'G'"""
+    for aa in cycle('GGSG'):
+        yield aa
+
+
+def x_to_ggsg(seq):
+    """replace Xs with a Serine-Glycine linker (GGSG pattern)
+
+    seq and return value are Bio.Seq.Seq
+    """
+    if 'X' not in seq:
+        return seq
+    replacement = []
+    ggsg = _ggsg_generator()
+    for aa in seq:
+        if aa != 'X':
+            replacement.append(aa)
+            # restart linker iterator for next stretch of Xs
+            ggsg = _ggsg_generator()
+        else:
+            replacement.append(next(ggsg))
+    return Seq(''.join(replacement), seq.alphabet)
+
+
+def disambiguate_iupac_aa(seq):
+    """generator
+    seq is Bio.Seq.Seq
+    """
+    match = re.search('[{}]'.format(extended_protein_letters), seq.tostring())
+    if match is None:
+        yield seq
+    else:
+        idx = match.start()
+        for aa in ambiguous_protein_values[seq[idx]]:
+            disambiguated = seq[:idx] + aa + seq[idx + 1:]
+            for s in disambiguate_iupac_aa(disambiguated):
+                yield s
 
 
 def remove_site_from_cds(seq, site, codon_sampler, cds_start=None,
