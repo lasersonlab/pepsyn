@@ -67,7 +67,8 @@ Options:
   -h, --help             Show this message and exit.
 ```
 
-Commands can be piped into each other.
+Commands can be piped into each other.  (Note: `stdin` and `stdout` are
+signified with `-`.)
 
 ```bash
 cat pepsyn/tests/proteins.fasta \
@@ -75,5 +76,5 @@ cat pepsyn/tests/proteins.fasta \
     | pepsyn revtrans - - \
     | pepsyn prefix -p ACGGG - - \
     | pepsyn suffix -s TGCTG - - \
-    | pepsyn removesite --site EcoRI --clip-left 5 --clip-right 35 - -
+    | pepsyn removesite --site EcoRI --clip-left 5 --clip-right 5 - -
 ```

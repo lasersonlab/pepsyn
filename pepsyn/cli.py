@@ -20,16 +20,14 @@ captureWarnings(True)
 
 from click import group, command, option, argument, File, Choice
 from Bio import SeqIO
-from Bio.Seq import Seq
 from Bio.SeqRecord import SeqRecord
-from Bio.Alphabet.IUPAC import unambiguous_dna
-from Bio.Restriction.Restriction import enzymedict
 
 from pepsyn.operations import (
     reverse_translate, remove_site_from_cds, x_to_ggsg, disambiguate_iupac_aa,
     tile as tile_op)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage)
+from pepsyn.util import site2dna
 
 
 @group(context_settings={'help_option_names': ['-h', '--help']})
@@ -122,10 +120,9 @@ def removesite(input, output, site, clip_left, clip_right, codon_table,
     elif sampler == 'uniform':
         codon_sampler = UniformCodonSampler()
 
-    if site in enzymedict:
-        site = Seq(enzymedict[site]['site'], unambiguous_dna)
-    else:
-        site = Seq(site, unambiguous_dna)
+    # import pdb; pdb.set_trace()
+    site = site2dna(site)
+    # site is now a Bio.Seq.Seq
 
     for seqrecord in SeqIO.parse(input, 'fasta'):
         id_ = seqrecord.id
@@ -174,10 +171,7 @@ def disambiguateaa(input, output):
 @option('--site', help='Site to find (e.g., EcoRI, AGCCT); case sensitive')
 def findsite(input, site):
     """find locations of a site"""
-    if site in enzymedict:
-        query = Seq(enzymedict[site]['site'], unambiguous_dna)
-    else:
-        query = Seq(site, unambiguous_dna)
+    query = site2dna(site)
     for seqrecord in SeqIO.parse(input, 'fasta'):
         id_ = seqrecord.id
         idx = seqrecord.seq.find(query)
