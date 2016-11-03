@@ -20,7 +20,7 @@ def readme():
 
 setup(
     name='pepsyn',
-    version='0.2.0.dev0',
+    version='0.2.0',
     description='Peptide library design',
     long_description=readme(),
     url='https://github.com/lasersonlab/pepsyn',
