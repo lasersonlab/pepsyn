@@ -21,12 +21,14 @@ captureWarnings(True)
 from click import group, command, option, argument, File, Choice
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
+from Bio.Data.CodonTable import standard_dna_table
 
 from pepsyn.operations import (
     reverse_translate, remove_site_from_cds, x_to_ggsg, disambiguate_iupac_aa,
-    tile as tile_op)
+    tile as tile_op, ctermpep as cterm_oligo, pad_ggsg)
 from pepsyn.codons import (
-    FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage)
+    FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage,
+    zero_non_amber_stops, zero_low_freq_codons)
 from pepsyn.util import site2dna
 
 
@@ -53,6 +55,44 @@ def tile(input, output, length, overlap):
                 output_title = '{}|{}-{}'.format(seqrecord.id, start, end)
                 output_record = SeqRecord(t, output_title, description='')
                 SeqIO.write(output_record, output, 'fasta')
+
+
+@cli.command()
+@argument_input
+@argument_output
+@option('--length', '-l', type=int, help='Length of output C-terminal oligo')
+@option('--add-stop', '-s', is_flag=True, help='Add a stop codon to peptide')
+def ctermpep(input, output, length, add_stop):
+    """extract C-terminal peptide (AA alphabets)"""
+    for seqrecord in SeqIO.parse(input, 'fasta'):
+        oligo = cterm_oligo(seqrecord.seq, length, add_stop=add_stop)
+        output_title = '{}|CTERM'.format(seqrecord.id)
+        if add_stop:
+            output_title = '{}|STOP'.format(output_title)
+        output_record = SeqRecord(oligo, output_title, description='')
+        SeqIO.write(output_record, output, 'fasta')
+
+
+@cli.command()
+@argument_input
+@argument_output
+@option('--length', '-l', type=int, help='Target length for peptide')
+@option('--n-term', '-n', 'terminus', flag_value='N',
+        help='Pad the N-terminus')
+@option('--c-term', '-c', 'terminus', flag_value='C', default=True,
+        help='Pad the C-terminus')
+def pad(input, output, length, terminus):
+    """pad peptide to target length with GSGG"""
+    for seqrecord in SeqIO.parse(input, 'fasta'):
+        padded = pad_ggsg(seqrecord.seq, length, terminus)
+        pad_len = len(padded) - len(seqrecord)
+        if pad_len > 0:
+            output_title = '{}|{}-PADDED-{}'.format(seqrecord.id, terminus,
+                                                    pad_len)
+        else:
+            output_title = seqrecord.id
+        output_record = SeqRecord(padded, output_title, description='')
+        SeqIO.write(output_record, output, 'fasta')
 
 
 @cli.command()
@@ -87,10 +127,21 @@ def suffix(input, output, suffix):
 @option('--codon-usage', '-u', default='ecoli', help='ONLY ECOLI IMPLEMENTED')
 @option('--sampler', default='weighted', show_default=True,
         type=Choice(['weighted', 'uniform']), help='Codon sampling method')
-def revtrans(input, output, codon_table, codon_usage, sampler):
+@option('--codon-freq-threshold', type=float, default=None,
+        help='Minimum codon frequency')
+@option('--amber-only', is_flag=True, help='Use only amber stop codon')
+def revtrans(input, output, codon_table, codon_usage, sampler,
+             codon_freq_threshold, amber_only):
     """reverse translate amino acid sequences into DNA"""
     if sampler == 'weighted':
-        codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
+        usage = ecoli_codon_usage
+        if codon_freq_threshold is not None:
+            # TODO: this is hardcoded in and there's a leaky abstraction here
+            table = standard_dna_table
+            usage = zero_low_freq_codons(usage, table, codon_freq_threshold)
+        if amber_only:
+            usage = zero_non_amber_stops(usage)
+        codon_sampler = FreqWeightedCodonSampler(usage=usage)
     elif sampler == 'uniform':
         codon_sampler = UniformCodonSampler()
     for seqrecord in SeqIO.parse(input, 'fasta'):
@@ -112,11 +163,21 @@ def revtrans(input, output, codon_table, codon_usage, sampler):
 @option('--codon-usage', '-u', default='ecoli', help='ONLY ECOLI IMPLEMENTED')
 @option('--sampler', default='weighted', show_default=True,
         type=Choice(['weighted', 'uniform']), help='Codon sampling method')
+@option('--codon-freq-threshold', type=float, default=None,
+        help='Minimum codon frequency')
+@option('--amber-only', is_flag=True, help='Use only amber stop codon')
 def removesite(input, output, site, clip_left, clip_right, codon_table,
-               codon_usage, sampler):
+               codon_usage, sampler, codon_freq_threshold, amber_only):
     """remove site from each sequence's CDS by recoding"""
     if sampler == 'weighted':
-        codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
+        usage = ecoli_codon_usage
+        if codon_freq_threshold is not None:
+            # TODO: this is hardcoded in and there's a leaky abstraction here
+            table = standard_dna_table
+            usage = zero_low_freq_codons(usage, table, codon_freq_threshold)
+        if amber_only:
+            usage = zero_non_amber_stops(usage)
+        codon_sampler = FreqWeightedCodonSampler(usage=usage)
     elif sampler == 'uniform':
         codon_sampler = UniformCodonSampler()
 
@@ -139,12 +200,13 @@ def removesite(input, output, site, clip_left, clip_right, codon_table,
 def x2ggsg(input, output):
     """replace stretches of Xs with Serine-Glycine linker (GGSG pattern)"""
     for seqrecord in SeqIO.parse(input, 'fasta'):
-        seq = seqrecord.seq
-        replacement = x_to_ggsg(seq)
-        seqrecord.seq = replacement
-        if replacement != seq:
-            seqrecord.id = '{}|{}'.format(seqrecord.id, 'withGSlinker')
-        SeqIO.write(seqrecord, output, 'fasta')
+        replacement = x_to_ggsg(seqrecord.seq)
+        if replacement != seqrecord.seq:
+            output_title = '{}|{}'.format(seqrecord.id, 'withGSlinker')
+        else:
+            output_title = seqrecord.id
+        output_record = SeqRecord(replacement, id=output_title, description='')
+        SeqIO.write(output_record, output, 'fasta')
 
 
 @cli.command()
@@ -161,9 +223,11 @@ def disambiguateaa(input, output):
         ambig = seqrecord.seq
         for (i, unambig) in enumerate(disambiguate_iupac_aa(ambig)):
             if unambig != ambig:
-                seqrecord.id = '{}|disambig_{}'.format(id_, i + 1)
-                seqrecord.seq = unambig
-            SeqIO.write(seqrecord, output, 'fasta')
+                output_title = '{}|disambig_{}'.format(id_, i + 1)
+            else:
+                output_title = id_
+            output_record = SeqRecord(unambig, output_title, description='')
+            SeqIO.write(output_record, output, 'fasta')
 
 
 @cli.command()
