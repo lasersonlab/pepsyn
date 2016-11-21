@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+from copy import copy
+from math import fsum
+from itertools import product
 
 import numpy as np
 from Bio.Seq import Seq
@@ -19,15 +22,58 @@ from Bio.Alphabet.IUPAC import unambiguous_dna
 from Bio.Data.CodonTable import standard_dna_table
 
 
+amber_codon = Seq('TAG', unambiguous_dna)
+ochre_codon = Seq('TAA', unambiguous_dna)
+opal_codon = Seq('TGA', unambiguous_dna)
+
+
 class CodonUsage(object):
 
-    def __init__(self, freq):
-        """freq is a dict of Seq('NNN', alphabet) -> float mappings"""
-        # TODO: input verification:
-        # all codons
-        # sums to 1
-        self.freq = freq
-        self.nucleotide_alphabet = freq.keys().__iter__().__next__().alphabet
+    def __init__(self, weights):
+        """weights is a dict of Seq('NNN', alphabet) -> float mappings
+
+        weights does not need to be normalized, but must include all 64 codons
+        """
+        self.nucleotide_alphabet = weights.keys().__iter__().__next__().alphabet
+
+        # verify presence of all 64 codons
+        all_64 = {Seq(''.join(x), self.nucleotide_alphabet)
+                  for x in product(self.nucleotide_alphabet.letters, repeat=3)}
+        if all_64 != set(weights.keys()):
+            raise ValueError('values must include all 64 codons')
+
+        self.freq = copy(weights)
+        self._renormalize_weights()
+
+    def _renormalize_weights(self):
+        total = fsum(self.freq.values())
+        for codon in self.freq:
+            self.freq[codon] = self.freq[codon] / total
+
+
+# TODO: These fns seem like they need to be organized in a more principled
+# manner
+def zero_non_amber_stops(usage):
+    """Returns CodonUsage that zeros-out non-amber stop codons"""
+    # TODO: it doesn't take into account alphabet
+    freq = usage.freq.copy()
+    freq[ochre_codon] = 0.
+    freq[opal_codon] = 0.
+    return CodonUsage(freq)
+
+
+def zero_low_freq_codons(usage, table, freq_threshold=0.01):
+    """Returns CodonUsage that zeros low-freq codons unless the AA is elim"""
+    freq = usage.freq.copy()
+    common_codons = {str(c) for (c, f) in freq.items() if f >= freq_threshold}
+    for aa in table.protein_alphabet.letters + '*':
+        curr_codons = {c for (c, a) in table.forward_table.items() if a == aa}
+        if len(common_codons & curr_codons) == 0:
+            continue
+        rare_codons = curr_codons - common_codons
+        for c in rare_codons:
+            freq[Seq(c, unambiguous_dna)] = 0.
+    return CodonUsage(freq)
 
 
 class CodonSampler(object):
@@ -44,6 +90,9 @@ class CodonSampler(object):
         for (codon, aa) in self.table.forward_table.items():
             c = Seq(codon, self.table.nucleotide_alphabet)
             self.aa2codons.setdefault(aa, []).append(c)
+        for codon in self.table.stop_codons:
+            c = Seq(codon, self.table.nucleotide_alphabet)
+            self.aa2codons.setdefault('*', []).append(c)
 
     def sample_codon(self, aa):
         """
@@ -70,7 +119,7 @@ class FreqWeightedCodonSampler(CodonSampler):
     def __init__(self, table=None, usage=None):
         """
         table is Bio.Data.CodonTable.NCBICodonTableDNA
-        usage is CodonUsage; None means uniform
+        usage is CodonUsage
         """
         super().__init__(table)
         if usage is None:
@@ -79,13 +128,13 @@ class FreqWeightedCodonSampler(CodonSampler):
         if self.table.nucleotide_alphabet != self.usage.nucleotide_alphabet:
             raise ValueError('table and usage need to use the same nucleotide'
                              'Alphabet')
-        # precalculate distribution (p) for each amino acid
+
+        # precalculate amino acid distributions (incl stop codon)
         self.aa2p = {}
-        if self.usage is not None:
-            for aa in self.table.protein_alphabet.letters:
-                unnormed = np.asarray(
-                    [self.usage.freq[c] for c in self.aa2codons[aa]])
-                self.aa2p[aa] = unnormed / unnormed.sum()
+        for aa in self.table.protein_alphabet.letters + '*':
+            unnormed = np.asarray(
+                [self.usage.freq[c] for c in self.aa2codons[aa]])
+            self.aa2p[aa] = unnormed / unnormed.sum()
 
     def sample_codon(self, aa):
         """
