@@ -44,7 +44,7 @@ Options:
 
 Commands:
   prefix      add a prefix to each sequence
-  removesite  remove site from each sequence's CDS by...
+  recodesite  remove site from each sequence's CDS by...
   revtrans    reverse translate amino acid sequences into...
   stats       compute some sequence statistics
   suffix      add a suffix to each sequence
@@ -76,5 +76,5 @@ cat pepsyn/tests/proteins.fasta \
     | pepsyn revtrans - - \
     | pepsyn prefix -p ACGGG - - \
     | pepsyn suffix -s TGCTG - - \
-    | pepsyn removesite --site EcoRI --clip-left 5 --clip-right 5 - -
+    | pepsyn recodesite --site EcoRI --clip-left 5 --clip-right 5 - -
 ```

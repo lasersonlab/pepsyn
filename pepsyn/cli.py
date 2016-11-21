@@ -24,7 +24,7 @@ from Bio.SeqRecord import SeqRecord
 from Bio.Data.CodonTable import standard_dna_table
 
 from pepsyn.operations import (
-    reverse_translate, remove_site_from_cds, x_to_ggsg, disambiguate_iupac_aa,
+    reverse_translate, recode_site_from_cds, x_to_ggsg, disambiguate_iupac_aa,
     tile as tile_op, ctermpep as cterm_oligo, pad_ggsg)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage,
@@ -154,9 +154,9 @@ def revtrans(input, output, codon_table, codon_usage, sampler,
 @argument_input
 @argument_output
 @option('--site', help='Site to remove (e.g., EcoRI, AGCCT); case sensitive')
-@option('--clip-left', type=int,
+@option('--clip-left', type=int, default=0,
         help='Number of bases to clip from start of sequence to get to CDS')
-@option('--clip-right', type=int,
+@option('--clip-right', type=int, default=0,
         help='Number of bases to clip from end of sequence to get to CDS')
 @option('--codon-table', '-t', default='standard',
         help='ONLY STANDARD TABLE IMPLEMENTED')
@@ -166,7 +166,7 @@ def revtrans(input, output, codon_table, codon_usage, sampler,
 @option('--codon-freq-threshold', type=float, default=None,
         help='Minimum codon frequency')
 @option('--amber-only', is_flag=True, help='Use only amber stop codon')
-def removesite(input, output, site, clip_left, clip_right, codon_table,
+def recodesite(input, output, site, clip_left, clip_right, codon_table,
                codon_usage, sampler, codon_freq_threshold, amber_only):
     """remove site from each sequence's CDS by recoding"""
     if sampler == 'weighted':
@@ -181,7 +181,6 @@ def removesite(input, output, site, clip_left, clip_right, codon_table,
     elif sampler == 'uniform':
         codon_sampler = UniformCodonSampler()
 
-    # import pdb; pdb.set_trace()
     site = site2dna(site)
     # site is now a Bio.Seq.Seq
 
@@ -189,7 +188,7 @@ def removesite(input, output, site, clip_left, clip_right, codon_table,
         id_ = seqrecord.id
         cds_start = clip_left
         cds_end = len(seqrecord) - clip_right
-        seq = remove_site_from_cds(seqrecord.seq, site, codon_sampler,
+        seq = recode_site_from_cds(seqrecord.seq, site, codon_sampler,
                                    cds_start, cds_end)
         SeqIO.write(SeqRecord(seq, id_, description=''), output, 'fasta')
 
@@ -233,14 +232,20 @@ def disambiguateaa(input, output):
 @cli.command()
 @argument_input
 @option('--site', help='Site to find (e.g., EcoRI, AGCCT); case sensitive')
-def findsite(input, site):
+@option('--clip-left', type=int, default=0,
+        help='Number of bases to clip from start of sequence to get to CDS')
+@option('--clip-right', type=int, default=0,
+        help='Number of bases to clip from end of sequence to get to CDS')
+def findsite(input, site, clip_left, clip_right):
     """find locations of a site"""
     query = site2dna(site)
     for seqrecord in SeqIO.parse(input, 'fasta'):
         id_ = seqrecord.id
-        idx = seqrecord.seq.find(query)
+        start = clip_left
+        end = len(seqrecord) - clip_right
+        idx = seqrecord.seq[start:end].find(query)
         if idx >= 0:
-            print('{}|{}|{}'.format(id_, site, idx), flush=True)
+            print('{}|{}|{}'.format(id_, site, idx + start), flush=True)
 
 
 @cli.command()

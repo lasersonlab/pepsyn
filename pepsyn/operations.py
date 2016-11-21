@@ -149,43 +149,54 @@ def disambiguate_iupac_aa(seq):
                 yield s
 
 
-def remove_site_from_cds(seq, site, codon_sampler, cds_start=None,
-                         cds_end=None):
+def recode(seq, codon_sampler):
+    """
+    seq is a Bio.Seq.Seq
+    codon_sampler is a CodonSampler
+    """
+    translation = seq.translate(table=codon_sampler.table)
+    recoded = reverse_translate(translation, codon_sampler)
+    return recoded
+
+
+def recode_site_from_cds(seq, site, codon_sampler, cds_start=None,
+                         cds_end=None, search_start=None):
     """
     seq is a Bio.Seq.Seq
     site is a Bio.Seq.Seq
     codon_sampler is a CodonSampler
-    cds_start, cds_end are int; defaults to full seq
+    cds_start, cds_end are int; defaults to full seq; defines recodable region
+    search_start is int; default full seq; where to start search for site
     """
-    site_start = seq.find(site)
-    if site_start == -1:
-        return seq
-    site_end = site_start + len(site)
-    if cds_start is None:
-        cds_start = 0
-    if cds_end is None:
-        cds_end = len(seq)
-    if site_end <= cds_start or site_start >= cds_end:
-        # site doesn't overlap the CDS => no-op
-        return seq
+    # validate input
+    search_start = search_start if search_start is not None else 0
+    cds_start = cds_start if cds_start is not None else 0
+    cds_end = cds_end if cds_end is not None else len(seq)
     if (cds_end - cds_start) % 3 != 0:
         raise PepsynError('CDS length is not multiple of 3')
 
+    # initial search for site; handle recursion breaking cases here
+    site_start = seq.find(site, search_start)
+    if site_start == -1:
+        return seq
+    site_end = site_start + len(site)
+    if site_end <= cds_start or site_start >= cds_end:
+        # site doesn't overlap the CDS => move on further down the seq
+        return recode_site_from_cds(seq, site, codon_sampler,
+                                    cds_start=cds_start, cds_end=cds_end,
+                                    search_start=(site_start + 1))
+    # site needs to be recoded
     # computes offsets for the site boundaries to align them to coding frame
     start_offset = (site_start - cds_start) % 3
     # negative because the end coord must be pushed to the right
     end_offset = -(site_end - cds_start) % 3
-    repl_start = max(site_start - start_offset, cds_start)
-    repl_end = min(site_end + end_offset, cds_end)
-
+    recode_start = max(site_start - start_offset, cds_start)
+    recode_end = min(site_end + end_offset, cds_end)
     # compute candidate recoded sequence
-    trans = seq[repl_start:repl_end].translate(table=codon_sampler.table)
-    replacement = reverse_translate(trans, codon_sampler)
-    candidate = seq[:repl_start] + replacement + seq[repl_end:]
-    if candidate.find(site) == -1:
-        return candidate
-    else:
-        # TODO: this can cause a maximum recursion error
-        return remove_site_from_cds(
-            candidate, site, codon_sampler, cds_start=cds_start,
-            cds_end=cds_end)
+    recoded_chunk = recode(seq[recode_start:recode_end], codon_sampler)
+    candidate = seq[:recode_start] + recoded_chunk + seq[recode_end:]
+    # TODO: this can cause a maximum recursion error if it never finds a
+    # recoded sequence without the site recursively
+    return recode_site_from_cds(candidate, site, codon_sampler,
+                                cds_start=cds_start, cds_end=cds_end,
+                                search_start=search_start)

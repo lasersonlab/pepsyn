@@ -18,7 +18,7 @@ from Bio.Alphabet.IUPAC import protein, unambiguous_dna
 import numpy as np
 
 from pepsyn.operations import (
-    tile, reverse_translate, remove_site_from_cds, x_to_ggsg,
+    tile, reverse_translate, recode_site_from_cds, x_to_ggsg,
     disambiguate_iupac_aa, pad_ggsg, ctermpep)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage)
@@ -128,7 +128,7 @@ class TestSiteRemoval(object):
     def test_no_site(self):
         dna_seq = Seq(
             'GAGATCCGGTCCATATCTTATTCAACGCAAGTTGTTAT', unambiguous_dna)
-        new_seq = remove_site_from_cds(
+        new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
             self.cds_end)
         assert new_seq.find(self.EcoRI) == -1
@@ -137,7 +137,7 @@ class TestSiteRemoval(object):
     def test_with_site_in_cds(self):
         dna_seq = Seq(
             'GAGATCCGGTCCATATCGAATTCAACGCAAGTTGTTAT', unambiguous_dna)
-        new_seq = remove_site_from_cds(
+        new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
             self.cds_end)
         orig_trans = dna_seq[self.cds_start:self.cds_end].translate(
@@ -154,7 +154,7 @@ class TestSiteRemoval(object):
     def test_with_site_on_left_boundary(self):
         dna_seq = Seq(
             'GAGATCCGGAATTCATCTTATTCAACGCAAGTTGTTAT', unambiguous_dna)
-        new_seq = remove_site_from_cds(
+        new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
             self.cds_end)
         orig_trans = dna_seq[self.cds_start:self.cds_end].translate(
@@ -171,7 +171,7 @@ class TestSiteRemoval(object):
     def test_with_site_on_left_boundary(self):
         dna_seq = Seq(
             'GAGATCCGGTCCATATCTTATTCGAATTCAGTTGTTAT', unambiguous_dna)
-        new_seq = remove_site_from_cds(
+        new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
             self.cds_end)
         orig_trans = dna_seq[self.cds_start:self.cds_end].translate(
@@ -188,7 +188,7 @@ class TestSiteRemoval(object):
     def test_with_site_outside_cds(self):
         dna_seq = Seq(
             'GAGATCCGGTCCATATCTTATTCAACGCAAGAATTCAT', unambiguous_dna)
-        new_seq = remove_site_from_cds(
+        new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start,
             self.cds_end)
         assert new_seq.find(self.EcoRI) >= 0
@@ -201,7 +201,7 @@ class TestSiteRemoval(object):
         dna_seq = Seq(
             'GAGATCCGGAATTCATCTTATTCAACGAAGTTGTTAT', unambiguous_dna)
         with raises(PepsynError):
-            new_seq = remove_site_from_cds(
+            new_seq = recode_site_from_cds(
                 dna_seq, self.EcoRI, self.codon_sampler, cds_start, cds_end)
 
 
