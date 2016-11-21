@@ -19,7 +19,7 @@ import numpy as np
 
 from pepsyn.operations import (
     tile, reverse_translate, remove_site_from_cds, x_to_ggsg,
-    disambiguate_iupac_aa)
+    disambiguate_iupac_aa, pad_ggsg, ctermpep)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage)
 from pepsyn.error import PepsynError
@@ -48,11 +48,11 @@ class TestTile(object):
         length = 25
         overlap = 0
         tiles = [t[2] for t in tile(protein_seq, length, overlap)]
-        assert len(tiles) == 3
+        assert len(tiles) == 2
         assert all([len(t) == length for t in tiles])
         assert tiles[0] == Seq('METMSDYSKEVSEALSALRGELSAL', protein)
         assert tiles[1] == Seq('SAAISNTVRAGSYSAPVAKDCKAGH', protein)
-        assert tiles[2] == Seq('VRAGSYSAPVAKDCKAGHCDSKAVL', protein)
+        assert sum(tiles, Seq('', protein)) == protein_seq[:50]
 
     def test_overlapping_perfect(self):
         length = 21
@@ -68,19 +68,16 @@ class TestTile(object):
         length = 22
         overlap = 3
         tiles = [t[2] for t in tile(protein_seq, length, overlap)]
-        assert len(tiles) == 3
+        assert len(tiles) == 2
         assert all([len(t) == length for t in tiles])
         assert tiles[0] == Seq('METMSDYSKEVSEALSALRGEL', protein)
         assert tiles[1] == Seq('GELSALSAAISNTVRAGSYSAP', protein)
-        assert tiles[2] == Seq('GSYSAPVAKDCKAGHCDSKAVL', protein)
 
     def test_length_longer_than_seq(self):
-        # import pytest; pytest.set_trace()
         length = len(protein_seq) + 5
         overlap = 5
         tiles = list(tile(protein_seq, length, overlap))
-        assert len(tiles) == 1
-        assert tiles[0][2] == protein_seq
+        assert len(tiles) == 0
 
     def test_overlap_longer_than_length(self):
         length = 10
@@ -309,3 +306,47 @@ class TestProteinDisambig(object):
         proteins = set(disambiguate_iupac_aa(ambig))
         assert len(proteins) == 4
         assert proteins == {'AALLAA', 'AALIAA', 'AAILAA', 'AAIIAA'}
+
+
+class TestPad(object):
+
+    def test_n_term_pad(self):
+        padded = pad_ggsg(short_protein_seq, len(short_protein_seq) + 5, 'N')
+        assert padded == 'GGSGG' + short_protein_seq
+
+
+    def test_c_term_pad(self):
+        padded = pad_ggsg(short_protein_seq, len(short_protein_seq) + 7, 'C')
+        assert padded == short_protein_seq + 'GGSGGGS'
+
+    def test_long_seq(self):
+        padded = pad_ggsg(short_protein_seq, len(short_protein_seq) - 3, 'C')
+        assert padded == short_protein_seq
+
+    def test_exact_len_seq(self):
+        padded = pad_ggsg(short_protein_seq, len(short_protein_seq), 'C')
+        assert padded == short_protein_seq
+
+    def test_nonsense_terminus(self):
+        with raises(ValueError):
+            # note lowercase 'c'
+            padded = pad_ggsg(short_protein_seq, len(short_protein_seq) + 5, 'c')
+
+
+class TestCTermPep(object):
+
+    def test_short_seq(self):
+        peptide = ctermpep(short_protein_seq, 15)
+        assert peptide == short_protein_seq
+
+    def test_short_seq_with_stop(self):
+        peptide = ctermpep(short_protein_seq, 15, add_stop=True)
+        assert peptide == short_protein_seq + '*'
+
+    def test_cterm_pep(self):
+        peptide = ctermpep(protein_seq, 5)
+        assert peptide == protein_seq[-5:]
+
+    def test_add_stop(self):
+        peptide = ctermpep(protein_seq, 5, add_stop=True)
+        assert peptide == protein_seq[-4:] + '*'
