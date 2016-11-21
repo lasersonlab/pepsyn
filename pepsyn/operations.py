@@ -40,7 +40,12 @@ extended_protein_letters = ''.join(ambiguous_protein_values.keys())
 
 
 def tile(seq, length, overlap):
-    """generator
+    """Generator of tiles with specified length across a sequence
+
+    Generates the longest possible sequence of tiles, but may leave non-covered
+    segments at the end of the sequence.  Sequence must be at least as long as
+    tile length
+
     seq is a Bio.Seq.Seq
     length, overlap are int
     """
@@ -59,11 +64,21 @@ def tile(seq, length, overlap):
     if end == seqlen:
         start = end - length
         yield (start, end, seq[start:end])
-    else:
-        # we lower-bound at zero bc of the edge case where seqlen > length
-        start = max(seqlen - length, 0)
-        end = seqlen
-        yield (start, end, seq[start:end])
+
+
+def ctermpep(seq, length, add_stop=False):
+    """Get C-terminal peptide
+
+    add_stop will add a '*' to the peptide (total length still equal to
+    `length`)
+
+    If length is bigger than seq, it will return the entire seq
+
+    seq is a Bio.Seq.Seq
+    """
+    if add_stop:
+        seq += '*'
+    return seq[-length:]
 
 
 def reverse_translate(seq, codon_sampler):
@@ -100,6 +115,23 @@ def x_to_ggsg(seq):
         else:
             replacement.append(next(ggsg))
     return Seq(''.join(replacement), seq.alphabet)
+
+
+def pad_ggsg(seq, length, terminus='C'):
+    """pad seq with Serine-Glycine linker (GGSG pattern)
+
+    seq and return are Bio.Seq.Seq
+    """
+    if len(seq) >= length:
+        return seq
+    ggsg = _ggsg_generator()
+    pad = ''.join([next(ggsg) for _ in range(length - len(seq))])
+    if terminus == 'C':
+        return seq + pad
+    elif terminus == 'N':
+        return pad + seq
+    else:
+        raise ValueError('terminus must be "N" or "C"')
 
 
 def disambiguate_iupac_aa(seq):
