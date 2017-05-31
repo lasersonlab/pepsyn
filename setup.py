@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from setuptools import setup, find_packages
+import versioneer
 
 def readme():
     with open('README.md', 'r') as ip:
@@ -20,7 +21,8 @@ def readme():
 
 setup(
     name='pepsyn',
-    version='0.3.0.dev0',
+    version=versioneer.get_version(),
+    cmdclass=versioneer.get_cmdclass(),
     description='Peptide library design',
     long_description=readme(),
     url='https://github.com/lasersonlab/pepsyn',
