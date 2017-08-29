@@ -76,6 +76,16 @@ def ctermpep(input, output, length, add_stop):
 @cli.command()
 @argument_input
 @argument_output
+def stripstop(input, output):
+    """strip stop codons from end of protein sequence"""
+    for seqrecord in SeqIO.parse(input, 'fasta'):
+        seqrecord.seq = seqrecord.seq.rstrip('*')
+        SeqIO.write(seqrecord, output, 'fasta')
+
+
+@cli.command()
+@argument_input
+@argument_output
 @option('--length', '-l', type=int, help='Target length for peptide')
 @option('--n-term', '-n', 'terminus', flag_value='N',
         help='Pad the N-terminus')
