@@ -22,6 +22,13 @@ from click import group, command, option, argument, File, Choice
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Data.CodonTable import standard_dna_table
+try:
+    from tqdm import tqdm
+except ImportError:
+    def tqdm(*args, **kwargs):
+        if args:
+            return args[0]
+        return kwargs.get('iterable', None)
 
 from pepsyn.operations import (
     reverse_translate, recode_site_from_cds, x_to_ggsg, disambiguate_iupac_aa,
@@ -50,7 +57,7 @@ argument_output = argument('output', type=File('w'))
 @option('--overlap', '-p', type=int, help='Overlap of oligos')
 def tile(input, output, length, overlap):
     """tile a set of sequences"""
-    for seqrecord in SeqIO.parse(input, 'fasta'):
+    for seqrecord in tqdm(SeqIO.parse(input, 'fasta'), desc='tile', unit='seq'):
         for (start, end, t) in tile_op(seqrecord.seq, length, overlap):
                 output_title = '{}|{}-{}'.format(seqrecord.id, start, end)
                 output_record = SeqRecord(t, output_title, description='')
@@ -64,7 +71,7 @@ def tile(input, output, length, overlap):
 @option('--add-stop', '-s', is_flag=True, help='Add a stop codon to peptide')
 def ctermpep(input, output, length, add_stop):
     """extract C-terminal peptide (AA alphabets)"""
-    for seqrecord in SeqIO.parse(input, 'fasta'):
+    for seqrecord in tqdm(SeqIO.parse(input, 'fasta'), desc='ctermpep', unit='seq'):
         oligo = cterm_oligo(seqrecord.seq, length, add_stop=add_stop)
         output_title = '{}|CTERM'.format(seqrecord.id)
         if add_stop:
@@ -154,7 +161,7 @@ def revtrans(input, output, codon_table, codon_usage, sampler,
         codon_sampler = FreqWeightedCodonSampler(usage=usage)
     elif sampler == 'uniform':
         codon_sampler = UniformCodonSampler()
-    for seqrecord in SeqIO.parse(input, 'fasta'):
+    for seqrecord in tqdm(SeqIO.parse(input, 'fasta'), desc='revtrans', unit='seq'):
         dna_id = seqrecord.id
         dna_seq = reverse_translate(seqrecord.seq, codon_sampler)
         SeqIO.write(SeqRecord(dna_seq, dna_id, description=''), output, 'fasta')
@@ -255,7 +262,7 @@ def findsite(input, site, clip_left, clip_right):
         end = len(seqrecord) - clip_right
         idx = seqrecord.seq[start:end].find(query)
         if idx >= 0:
-            print('{}|{}|{}'.format(id_, site, idx + start), flush=True)
+            tqdm.write('{}|{}|{}'.format(id_, site, idx + start))
 
 
 @cli.command()
