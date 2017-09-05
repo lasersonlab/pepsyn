@@ -103,6 +103,13 @@ class TestTile(object):
         with raises(ValueError):
             tiles = list(tile(protein_seq, length, overlap))
 
+    def test_short_protein(self):
+        length = 56
+        overlap = 2
+        assert len(list(tile(short_protein_seq, length, overlap))) == 0
+        overlap = 20
+        assert len(list(tile(short_protein_seq, length, overlap))) == 0
+
 
 class TestReverseTranslate(object):
 
