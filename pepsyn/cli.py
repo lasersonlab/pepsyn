@@ -12,23 +12,19 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import sys
+from math import ceil
+from collections import Counter
 from logging import captureWarnings
 
 # biopython has a bunch of annoying warnings bc Seq comparisons changed
 captureWarnings(True)
 
-from click import group, command, option, argument, File, Choice
+from click import group, command, option, argument, File, Choice, Path
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Data.CodonTable import standard_dna_table
-try:
-    from tqdm import tqdm
-except ImportError:
-    def tqdm(*args, **kwargs):
-        if args:
-            return args[0]
-        return kwargs.get('iterable', None)
+from tqdm import tqdm, trange
 
 from pepsyn.operations import (
     reverse_translate, recode_site_from_cds, x_to_ggsg, disambiguate_iupac_aa,
@@ -267,6 +263,125 @@ def findsite(input, site, clip_left, clip_right):
 
 @cli.command()
 @argument_input
-def stats(input):
-    """NOT IMPL'd: compute some sequence statistics"""
-    pass
+@argument_output
+@option('-k', '--kmer-size', type=int, required=True, help='k-mer size')
+@option('-t', '--tile-size', type=int, required=True, help='tile size')
+@option('-c', '--kmer-cov', type=float, default=1.5,
+        help='target avg k-mer coverage')
+@option('-b', '--cterm-boost', type=float, default=1.,
+        help='multiplier to increase representation of cterm tiles')
+@option('-p', '--prefix', default='tile', help='tile size')
+def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, prefix):
+    """select protein tiles by maximizing k-mer coverage
+
+    each tile is a fragment of an observed input ORF
+    ORFs shorter than tile-size are still sampled
+    ORFs shorter than kmer-size are always included in tile set
+    """
+    import networkx as nx
+    from pepsyn.dbg import (
+        gen_kmers, tiling_stats, orf_stats, seqrecords_to_dbg,
+        sequence_incr_attr, sequence_setreduce_attr)
+
+    # load data and build dbg
+    orfs = {sr.id: sr for sr in SeqIO.parse(input, 'fasta')}
+    with tqdm(desc='loading dbg') as pbar:
+        dbg = seqrecords_to_dbg(
+            orfs.values(), kmer_size, skip_short=True, tqdm=pbar)
+
+    selected_tiles = set()
+
+    # add ORFs shorter than kmer size to the selected tiles
+    short_orf_names = {}
+    for orf in orfs.values():
+        if len(orf) < kmer_size:
+            selected_tiles.add(str(orf.seq))
+            short_orf_names[str(orf.seq)] = orf.id
+
+    # process each graph component separately
+    num_components = nx.number_weakly_connected_components(dbg)
+    component_iter = nx.weakly_connected_component_subgraphs(dbg)
+    for component in tqdm(component_iter, desc='components', total=num_components):
+        # generate all candidate tiles
+        cdss = set([cds for p in component.nodes_iter(True) for cds in p[1]['cds']])
+        component_tiles = set()
+        cterm_tiles = set()
+        kmer_to_tile = {}
+        for cds in cdss:
+            cterm_tiles.add(str(orfs[cds].seq)[-tile_size:])
+            for tile in gen_kmers(str(orfs[cds].seq), tile_size, yield_short=True):
+                component_tiles.add(tile)
+                for kmer in gen_kmers(tile, kmer_size):
+                    kmer_to_tile.setdefault(kmer, set()).add(tile)
+
+        def compute_tile_score(tile):
+            weighted_multiplicity = 0
+            for kmer in gen_kmers(tile, kmer_size, yield_short=True):
+                if component.has_node(kmer) and component.node[kmer].get('weight', 0) == 0:
+                    weighted_multiplicity += component.node[kmer]['multiplicity']
+            return weighted_multiplicity
+
+        # initialize tile scores
+        tile_scores = {}
+        for tile in component_tiles:
+            tile_scores[tile] = compute_tile_score(tile)
+            # give a boost to cterm tiles
+            if tile in cterm_tiles:
+                tile_scores[tile] += ceil(tile_size * cterm_boost)
+
+        def update_tile_scores(tile):
+            for kmer in gen_kmers(tile, kmer_size):
+                for t in kmer_to_tile[kmer]:
+                    tile_scores[t] = max(
+                        0, tile_scores[t] - dbg.node[kmer]['multiplicity'])
+
+        num_component_tiles = ceil(len(component) * kmer_cov / (tile_size - kmer_size + 1))
+        for i in trange(num_component_tiles, desc='tile selection'):
+            tile = max(component_tiles, key=tile_scores.get)
+            if len(tile) < kmer_size:
+                continue
+            selected_tiles.add(tile)
+            sequence_incr_attr(component, tile, kmer_size, 'weight')
+            sequence_incr_attr(dbg, tile, kmer_size, 'weight')
+            update_tile_scores(tile)
+
+    for (k, v) in orf_stats(dbg, orfs.values(), tile_size):
+        print(f'{k}\t{v}', file=sys.stderr)
+    for (k, v) in tiling_stats(dbg, selected_tiles):
+        print(f'{k}\t{v}', file=sys.stderr)
+
+    # write out tiles and generate names
+    for i, tile in enumerate(tqdm(selected_tiles, desc='writing', unit='tile')):
+        if len(tile) < kmer_size:
+            cdss = set([short_orf_names[tile]])
+        else:
+            cdss = sequence_setreduce_attr(dbg, tile, kmer_size, 'cds')
+        cds = Counter(cdss).most_common(1)[0][0]
+        print(f'>{prefix}{i:05d}|{cds}\n{tile}', file=output)
+
+
+@cli.command()
+@option('-p', '--tiles', type=Path(exists=True, dir_okay=False), required=True,
+        help='input protein tiles fasta')
+@option('-r', '--orfs', type=Path(exists=True, dir_okay=False), required=True,
+        help='input ORFs fasta')
+@option('-k', '--kmer-size', type=int, required=True, help='k-mer size')
+@option('-t', '--tile-size', type=int, required=True, help='tile size')
+def proteintilestats(tiles, orfs, kmer_size, tile_size):
+    """compute some sequence statistics"""
+    from pepsyn.dbg import (
+        tiling_stats, orf_stats, fasta_to_dbg, sequence_incr_attr)
+
+    with tqdm(desc='loading dbg') as pbar:
+        dbg = fasta_to_dbg(orfs, kmer_size, skip_short=True, tqdm=pbar)
+    orfs = list(SeqIO.parse(orfs, 'fasta'))
+
+    # annotate DBG with tile weights
+    tiles = [str(sr.seq) for sr in SeqIO.parse(tiles, 'fasta')]
+    for tile in tiles:
+        sequence_incr_attr(dbg, tile, kmer_size, 'weight')
+
+    for (k, v) in orf_stats(dbg, orfs, tile_size):
+        print(f'{k}\t{v}', file=sys.stderr)
+    for (k, v) in tiling_stats(dbg, tiles):
+        print(f'{k}\t{v}', file=sys.stderr)
