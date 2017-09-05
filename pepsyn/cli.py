@@ -20,12 +20,14 @@ from logging import captureWarnings
 # biopython has a bunch of annoying warnings bc Seq comparisons changed
 captureWarnings(True)
 
-from click import group, command, option, argument, File, Choice, Path
+from click import (
+    group, command, option, argument, File, Choice, Path, version_option)
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Data.CodonTable import standard_dna_table
 from tqdm import tqdm, trange
 
+from pepsyn import __version__
 from pepsyn.operations import (
     reverse_translate, recode_site_from_cds, x_to_ggsg, disambiguate_iupac_aa,
     tile as tile_op, ctermpep as cterm_oligo, pad_ggsg)
@@ -36,6 +38,7 @@ from pepsyn.util import site2dna
 
 
 @group(context_settings={'help_option_names': ['-h', '--help']})
+@version_option(__version__)
 def cli():
     """pepsyn -- peptide synthesis design"""
     pass
