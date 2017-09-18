@@ -12,6 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import collections
+import itertools
+
 from Bio.Seq import Seq
 from Bio.Alphabet import _verify_alphabet
 from Bio.Alphabet.IUPAC import unambiguous_dna
@@ -34,3 +37,12 @@ def site2dna(site):
     if not _verify_alphabet(dna):
         raise ValueError('site is not recognized enzyme and not strict DNA')
     return dna
+
+
+def sliding_window(n, seq):
+    """ A sequence of overlapping subsequences
+
+    Stolen pytoolz impl
+    """
+    return zip(*(collections.deque(itertools.islice(it, i), 0) or it
+               for i, it in enumerate(itertools.tee(seq, n))))

@@ -39,6 +39,13 @@ def sum_attr(graph, nodes, attr):
     return sum([graph.node[node].get(attr, 0) for node in nodes])
 
 
+def setreduce_attr(graph, nodes, attr):
+    result = set()
+    for node in nodes:
+        result |= set(graph.node.get(node, {}).get(attr, []))
+    return result
+
+
 def max_attr(graph, nodes, attr):
     return max([graph.node[node].get(attr, 0) for node in nodes])
 
@@ -60,6 +67,14 @@ def graph_num_pos_attr(graph, attr):
 
 
 # some utilities for working with sequences on a de bruijn graph
+
+
+def seq_to_path(s, k):
+    return tuple(gen_kmers(s, k))
+
+
+def path_to_seq(p):
+    return ''.join([p[0]] + [n[-1] for n in p[1:]])
 
 
 def sequence_sum_attr(dbg, s, k, attr):

@@ -34,7 +34,7 @@ from pepsyn.operations import (
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage,
     zero_non_amber_stops, zero_low_freq_codons)
-from pepsyn.util import site2dna
+from pepsyn.util import site2dna, sliding_window
 
 
 @group(context_settings={'help_option_names': ['-h', '--help']})
@@ -282,9 +282,10 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, pr
     ORFs shorter than kmer-size are always included in tile set
     """
     import networkx as nx
+    import numpy as np
     from pepsyn.dbg import (
-        gen_kmers, tiling_stats, orf_stats, seqrecords_to_dbg,
-        sequence_incr_attr, sequence_setreduce_attr)
+        gen_kmers, tiling_stats, orf_stats, seqrecords_to_dbg, setreduce_attr,
+        seq_to_path, path_to_seq, incr_attr)
 
     # load data and build dbg
     orfs = {sr.id: sr for sr in SeqIO.parse(input, 'fasta')}
@@ -298,55 +299,64 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, pr
     short_orf_names = {}
     for orf in orfs.values():
         if len(orf) < kmer_size:
-            selected_tiles.add(str(orf.seq))
-            short_orf_names[str(orf.seq)] = orf.id
+            tile = str(orf.seq)
+            selected_tiles.add(tile)
+            short_orf_names[tile] = orf.id
 
     # process each graph component separately
     num_components = nx.number_weakly_connected_components(dbg)
-    component_iter = nx.weakly_connected_component_subgraphs(dbg)
-    for component in tqdm(component_iter, desc='components', total=num_components):
-        # generate all candidate tiles
-        cdss = set([cds for p in component.nodes_iter(True) for cds in p[1]['cds']])
-        component_tiles = set()
-        cterm_tiles = set()
-        kmer_to_tile = {}
-        for cds in cdss:
-            cterm_tiles.add(str(orfs[cds].seq)[-tile_size:])
-            for tile in gen_kmers(str(orfs[cds].seq), tile_size, yield_short=True):
-                component_tiles.add(tile)
-                for kmer in gen_kmers(tile, kmer_size):
-                    kmer_to_tile.setdefault(kmer, set()).add(tile)
+    component_iter = nx.weakly_connected_components(dbg)
+    for component in tqdm(component_iter, desc='tile selection', total=num_components):
+        component_cdss = set([cds for n in component for cds in dbg.node[n]['cds']])
 
-        def compute_tile_score(tile):
-            weighted_multiplicity = 0
-            for kmer in gen_kmers(tile, kmer_size, yield_short=True):
-                if component.has_node(kmer) and component.node[kmer].get('weight', 0) == 0:
-                    weighted_multiplicity += component.node[kmer]['multiplicity']
-            return weighted_multiplicity
+        # generate all candidate tiles/paths
+        component_paths = []
+        cterm_paths = []
+        for cds in component_cdss:
+            orf_path = seq_to_path(str(orfs[cds].seq), kmer_size)
 
-        # initialize tile scores
-        tile_scores = {}
-        for tile in component_tiles:
-            tile_scores[tile] = compute_tile_score(tile)
+            if len(orfs[cds]) < tile_size:
+                paths = [orf_path]
+            else:
+                paths = list(sliding_window(tile_size - kmer_size + 1, orf_path))
+
+            cterm_paths.append(paths[-1])
+            for path in paths:
+                component_paths.append(path)
+        component_paths = list(set(component_paths))
+        cterm_paths = frozenset(cterm_paths)
+
+        kmer_to_idxs = {}
+        for i, path in enumerate(component_paths):
+            for kmer in path:
+                kmer_to_idxs.setdefault(kmer, []).append(i)
+
+        # initialize path scores
+        path_scores = []
+        for path in component_paths:
+            score = 0
+            for kmer in path:
+                score += dbg.node[kmer]['multiplicity']
             # give a boost to cterm tiles
-            if tile in cterm_tiles:
-                tile_scores[tile] += ceil(tile_size * cterm_boost)
+            if path in cterm_paths:
+                score += ceil(tile_size * cterm_boost)
+            path_scores.append(score)
+        path_scores = np.asarray(path_scores)
 
-        def update_tile_scores(tile):
-            for kmer in gen_kmers(tile, kmer_size):
-                for t in kmer_to_tile[kmer]:
-                    tile_scores[t] = max(
-                        0, tile_scores[t] - dbg.node[kmer]['multiplicity'])
-
+        # choose tiles
         num_component_tiles = ceil(len(component) * kmer_cov / (tile_size - kmer_size + 1))
-        for i in trange(num_component_tiles, desc='tile selection'):
-            tile = max(component_tiles, key=tile_scores.get)
-            if len(tile) < kmer_size:
-                continue
-            selected_tiles.add(tile)
-            sequence_incr_attr(component, tile, kmer_size, 'weight')
-            sequence_incr_attr(dbg, tile, kmer_size, 'weight')
-            update_tile_scores(tile)
+        for _ in range(num_component_tiles):
+            i = path_scores.argmax()
+            path = component_paths[i]
+            selected_tiles.add(path_to_seq(path))
+            for kmer in path:
+                # update weight (coverage) on graph
+                incr_attr(dbg, kmer, 'weight')
+                # update path scores
+                idxs = list(set(kmer_to_idxs[kmer]))
+                path_scores[idxs] = path_scores[idxs] - dbg.node[kmer]['multiplicity']
+                zeros = path_scores < 0
+                path_scores[zeros] = 0
 
     for (k, v) in orf_stats(dbg, orfs.values(), tile_size):
         print(f'{k}\t{v}', file=sys.stderr)
@@ -354,11 +364,11 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, pr
         print(f'{k}\t{v}', file=sys.stderr)
 
     # write out tiles and generate names
-    for i, tile in enumerate(tqdm(selected_tiles, desc='writing', unit='tile')):
+    for i, tile in enumerate(selected_tiles):
         if len(tile) < kmer_size:
             cdss = set([short_orf_names[tile]])
         else:
-            cdss = sequence_setreduce_attr(dbg, tile, kmer_size, 'cds')
+            cdss = setreduce_attr(dbg, gen_kmers(tile, kmer_size), 'cds')
         cds = Counter(cdss).most_common(1)[0][0]
         print(f'>{prefix}{i:05d}|{cds}\n{tile}', file=output)
 
