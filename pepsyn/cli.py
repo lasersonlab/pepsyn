@@ -92,6 +92,18 @@ def stripstop(input, output):
 @cli.command()
 @argument_input
 @argument_output
+def filterstop(input, output):
+    """filter out sequences that contain stop codons (*)"""
+    for seqrecord in SeqIO.parse(input, 'fasta'):
+        if '*' in seqrecord.seq:
+            continue
+        seqrecord.seq = seqrecord.seq.rstrip('*')
+        SeqIO.write(seqrecord, output, 'fasta')
+
+
+@cli.command()
+@argument_input
+@argument_output
 @option('--length', '-l', type=int, help='Target length for peptide')
 @option('--n-term', '-n', 'terminus', flag_value='N',
         help='Pad the N-terminus')
@@ -276,8 +288,10 @@ def findsite(input, site, clip_left, clip_right):
 @option('-b', '--cterm-boost', type=float, default=1.,
         help='multiplier to increase representation of cterm tiles')
 @option('-p', '--prefix', default='tile', help='tile size')
+@option('-u', '--unweighted', is_flag=True,
+        help='use unweighted k-mer coverage')
 def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
-                  cterm_boost, prefix):
+                  cterm_boost, prefix, unweighted):
     """select protein tiles by maximizing k-mer coverage
 
     each tile is a fragment of an observed input ORF
@@ -340,21 +354,24 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
         # initialize path scores
         path_scores = []
         for path in component_paths:
-            score = 0
-            for kmer in path:
-                score += dbg.node[kmer]['multiplicity']
+            if unweighted:
+                score = len(path)
+            else:
+                score = sum(dbg.node[kmer]['multiplicity'] for kmer in path)
             # give a boost to cterm or nterm tiles
             if path in nterm_paths:
                 score += ceil(tile_size * nterm_boost)
             if path in cterm_paths:
                 score += ceil(tile_size * cterm_boost)
             path_scores.append(score)
-        path_scores = np.asarray(path_scores)
+        path_scores = np.ma.asarray(path_scores)
+        path_scores.harden_mask()
 
         # choose tiles
         num_component_tiles = ceil(len(component) * kmer_cov / (tile_size - kmer_size + 1))
-        for _ in range(num_component_tiles):
+        for _ in trange(num_component_tiles, desc='current component'):
             i = path_scores.argmax()
+            path_scores[i] = np.ma.masked
             path = component_paths[i]
             selected_tiles.add(path_to_seq(path))
             for kmer in path:
@@ -362,9 +379,12 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
                 incr_attr(dbg, kmer, 'weight')
                 # update path scores
                 idxs = list(set(kmer_to_idxs[kmer]))
-                path_scores[idxs] = path_scores[idxs] - dbg.node[kmer]['multiplicity']
-                zeros = path_scores < 0
-                path_scores[zeros] = 0
+                if unweighted:
+                    path_scores.data[idxs] = path_scores.data[idxs] - 1
+                else:
+                    path_scores.data[idxs] = path_scores.data[idxs] - dbg.node[kmer]['multiplicity']
+                zeros = path_scores.data < 0
+                path_scores.data[zeros] = 0
 
     for (k, v) in orf_stats(dbg, orfs.values(), tile_size):
         print(f'{k}\t{v}', file=sys.stderr)
@@ -401,7 +421,7 @@ def proteintilestats(tiles, orfs, kmer_size, tile_size):
     from pepsyn.dbg import (
         tiling_stats, orf_stats, fasta_to_dbg, sequence_incr_attr)
 
-    with tqdm(desc='loading dbg') as pbar:
+    with tqdm(desc='building dbg') as pbar:
         dbg = fasta_to_dbg(orfs, kmer_size, skip_short=True, tqdm=pbar)
     orfs = list(SeqIO.parse(orfs, 'fasta'))
 
