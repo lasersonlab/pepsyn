@@ -15,7 +15,6 @@
 
 from math import ceil
 
-import networkx as nx
 from Bio import SeqIO
 
 
@@ -176,3 +175,41 @@ def tiling_stats(dbg, tiles):
     cterm_cov = sum([1 for d in dbg.node.values() if (d.get('weight', 0) and d.get('cterm', False))]) / graph_sum_attr(dbg, 'cterm')
     stats.append(('c-term kmer coverage', cterm_cov))
     return stats
+
+
+
+
+import graph_tool.all as gt
+
+def gt_build_dbg(fasta_file):
+    k = 15
+    kmer_to_index = {}
+    dbg = gt.Graph()
+    dbg.vp.kmer = dbg.new_vertex_property('string')
+    dbg.vp.nterm = dbg.new_vertex_property('bool')
+    dbg.vp.cterm = dbg.new_vertex_property('bool')
+    dbg.vp.multiplicity = dbg.new_vertex_property('int32_t')
+    dbg.vp.cds = dbg.new_vertex_property('vector<string>')
+    for sr in tqdm(SeqIO.parse(fasta_file, 'fasta')):
+        if len(sr) < k:
+            continue
+        kmer_path = list(gen_kmers(str(sr.seq), k))
+        for kmer in kmer_path:
+            if kmer not in kmer_to_index:
+                v = dbg.add_vertex()
+                kmer_to_index[kmer] = int(v)
+                dbg.vp.kmer[v] = kmer
+                dbg.vp.multiplicity[v] = 0
+                dbg.vp.cds[v] = []
+                dbg.vp.nterm[v] = False
+                dbg.vp.cterm[v] = False
+            else:
+                v = dbg.vertex(kmer_to_index[kmer])
+            dbg.vp.multiplicity[v] += 1
+            dbg.vp.cds[v].append(sr.id)
+        dbg.vp.nterm[kmer_to_index[kmer_path[0]]] = True
+        dbg.vp.cterm[kmer_to_index[kmer_path[-1]]] = True
+
+        for (kmer1, kmer2) in sliding_window(2, kmer_path):
+            dbg.add_edge(kmer_to_index[kmer1], kmer_to_index[kmer2])
+    return dbg
