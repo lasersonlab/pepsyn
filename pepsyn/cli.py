@@ -271,10 +271,13 @@ def findsite(input, site, clip_left, clip_right):
 @option('-t', '--tile-size', type=int, required=True, help='tile size')
 @option('-c', '--kmer-cov', type=float, default=1.5,
         help='target avg k-mer coverage')
+@option('-d', '--nterm-boost', type=float, default=1.,
+        help='multiplier to increase representation of nterm tiles')
 @option('-b', '--cterm-boost', type=float, default=1.,
         help='multiplier to increase representation of cterm tiles')
 @option('-p', '--prefix', default='tile', help='tile size')
-def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, prefix):
+def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
+                  cterm_boost, prefix):
     """select protein tiles by maximizing k-mer coverage
 
     each tile is a fragment of an observed input ORF
@@ -289,7 +292,7 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, pr
 
     # load data and build dbg
     orfs = {sr.id: sr for sr in SeqIO.parse(input, 'fasta')}
-    with tqdm(desc='loading dbg') as pbar:
+    with tqdm(desc='building dbg') as pbar:
         dbg = seqrecords_to_dbg(
             orfs.values(), kmer_size, skip_short=True, tqdm=pbar)
 
@@ -311,6 +314,7 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, pr
 
         # generate all candidate tiles/paths
         component_paths = []
+        nterm_paths = []
         cterm_paths = []
         for cds in component_cdss:
             orf_path = seq_to_path(str(orfs[cds].seq), kmer_size)
@@ -320,10 +324,12 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, pr
             else:
                 paths = list(sliding_window(tile_size - kmer_size + 1, orf_path))
 
+            nterm_paths.append(paths[0])
             cterm_paths.append(paths[-1])
             for path in paths:
                 component_paths.append(path)
         component_paths = list(set(component_paths))
+        nterm_paths = frozenset(nterm_paths)
         cterm_paths = frozenset(cterm_paths)
 
         kmer_to_idxs = {}
@@ -337,7 +343,9 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, pr
             score = 0
             for kmer in path:
                 score += dbg.node[kmer]['multiplicity']
-            # give a boost to cterm tiles
+            # give a boost to cterm or nterm tiles
+            if path in nterm_paths:
+                score += ceil(tile_size * nterm_boost)
             if path in cterm_paths:
                 score += ceil(tile_size * cterm_boost)
             path_scores.append(score)
@@ -365,12 +373,20 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, cterm_boost, pr
 
     # write out tiles and generate names
     for i, tile in enumerate(selected_tiles):
+        nterm = ''
+        cterm = ''
         if len(tile) < kmer_size:
             cdss = set([short_orf_names[tile]])
+            nterm = '|NTERM'
+            cterm = '|CTERM'
         else:
             cdss = setreduce_attr(dbg, gen_kmers(tile, kmer_size), 'cds')
+            if dbg.node[tile[:kmer_size]].get('nterm', False):
+                nterm = '|NTERM'
+            if dbg.node[tile[-kmer_size:]].get('cterm', False):
+                cterm = '|CTERM'
         cds = Counter(cdss).most_common(1)[0][0]
-        print(f'>{prefix}{i:05d}|{cds}\n{tile}', file=output)
+        print(f'>{prefix}{i:05d}|{cds}{nterm}{cterm}\n{tile}', file=output)
 
 
 @cli.command()

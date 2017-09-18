@@ -188,6 +188,8 @@ def tiling_stats(dbg, tiles):
     stats.append(('max kmer coverage', graph_max_attr(dbg, 'weight')))
     weighted_cov = sum([d['multiplicity'] for d in dbg.node.values() if d.get('weight', 0) > 0]) / graph_sum_attr(dbg, 'multiplicity')
     stats.append(('multiplicity-weighted kmer coverage', weighted_cov))
+    nterm_cov = sum([1 for d in dbg.node.values() if (d.get('weight', 0) and d.get('nterm', False))]) / graph_sum_attr(dbg, 'nterm')
+    stats.append(('n-term kmer coverage', nterm_cov))
     cterm_cov = sum([1 for d in dbg.node.values() if (d.get('weight', 0) and d.get('cterm', False))]) / graph_sum_attr(dbg, 'cterm')
     stats.append(('c-term kmer coverage', cterm_cov))
     return stats
