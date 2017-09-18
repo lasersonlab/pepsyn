@@ -147,6 +147,30 @@ def update_debruijn_graph(dbg, sr, k):
     dbg.node[kmers[-1]]['cterm'] = True
 
 
+def dfs_fixed_length_paths(graph, source, length, reset=False):
+    if reset:
+        graph_zero_attr(graph, 'dfs_visited')
+    path = []
+    stack = [source]
+    while len(stack) > 0:
+        node = stack.pop()
+        if node is None:
+            _ = path.pop()
+            continue
+        path.append(node)
+        incr_attr(graph, node, 'dfs_visited')
+        if len(path) >= length:
+            yield tuple(path[-length:])
+        if sum_attr(graph, path[-length:], 'dfs_visited') >= length * 2:
+            # short circuit if the tip of my path has already been entirely
+            # visited
+            continue
+        for successor in graph.successors(path[-1]):
+            if graph.node[successor].get('dfs_visited', 0) <= length:
+                stack.append(None) # "op code" for shortening end of path
+                stack.append(successor)
+
+
 def orf_stats(dbg, orfs, tile_size):
     stats = []
     kmer_size = len(dbg.nodes()[0])
