@@ -280,32 +280,32 @@ class TestProteinDisambig(object):
 
     def test_B(self):
         ambig = Seq('AABAA', protein)
-        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {'AADAA', 'AANAA'}
 
     def test_X(self):
         ambig = Seq('AAXAA', protein)
-        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {'AA{}AA'.format(aa) for aa in all_aa_protein_seq}
 
     def test_Z(self):
         ambig = Seq('AAZAA', protein)
-        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {'AAEAA', 'AAQAA'}
 
     def test_J(self):
         ambig = Seq('AAJAA', protein)
-        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {'AALAA', 'AAIAA'}
 
     def test_U(self):
         ambig = Seq('AAUAA', protein)
-        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {'AACAA'}
 
     def test_O(self):
         ambig = Seq('AAOAA', protein)
-        disambig = {p.tostring() for p in disambiguate_iupac_aa(ambig)}
+        disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {'AAKAA'}
 
     def test_adjacent_ambig(self):

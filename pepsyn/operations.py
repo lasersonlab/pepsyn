@@ -22,11 +22,10 @@ from itertools import cycle
 
 
 from Bio.Seq import Seq
-from Bio.Data.IUPACData import protein_letters
+from Bio.Data.IUPACData import protein_letters, ambiguous_dna_values, unambiguous_dna_letters
 
 
 from pepsyn.error import PepsynError
-
 
 ambiguous_protein_values = {
     'B': 'DN',
@@ -37,7 +36,8 @@ ambiguous_protein_values = {
     'O': 'K',  # pyrrolysine
 }
 extended_protein_letters = ''.join(ambiguous_protein_values.keys())
-
+extended_dna_letters = (
+    set(ambiguous_dna_values.keys()) - set(unambiguous_dna_letters))
 
 def tile(seq, length, overlap):
     """Generator of tiles with specified length across a sequence
@@ -134,19 +134,42 @@ def pad_ggsg(seq, length, terminus='C'):
         raise ValueError('terminus must be "N" or "C"')
 
 
-def disambiguate_iupac_aa(seq):
+def disambiguate_iupac_string(seq, ambiguous_letters, disambiguation):
     """generator
     seq is Bio.Seq.Seq
+
+    ambiguous_letters is string containing ambiguous IUPAC codes
+
+    disambiguation is dict with key from ambiguous_letters and values the
+    strings containing the unambiguous versions (e.g.,
+    Bio.Data.IUPACData.ambiguous_dna_values)
+
     """
-    match = re.search('[{}]'.format(extended_protein_letters), seq.tostring())
+    match = re.search('[{}]'.format(ambiguous_letters), str(seq))
     if match is None:
         yield seq
     else:
         idx = match.start()
-        for aa in ambiguous_protein_values[seq[idx]]:
-            disambiguated = seq[:idx] + aa + seq[idx + 1:]
-            for s in disambiguate_iupac_aa(disambiguated):
+        for letter in disambiguation[seq[idx]]:
+            disambiguated = seq[:idx] + letter + seq[idx + 1:]
+            for s in disambiguate_iupac_string(disambiguated, ambiguous_letters, disambiguation):
                 yield s
+
+
+def disambiguate_iupac_dna(seq):
+    """generator
+    seq is Bio.Seq.Seq
+    """
+    for s in disambiguate_iupac_string(seq, extended_dna_letters, ambiguous_dna_values):
+        yield s
+
+
+def disambiguate_iupac_aa(seq):
+    """generator
+    seq is Bio.Seq.Seq
+    """
+    for s in disambiguate_iupac_string(seq, extended_protein_letters, ambiguous_protein_values):
+        yield s
 
 
 def recode(seq, codon_sampler):
