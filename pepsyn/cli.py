@@ -324,13 +324,13 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
     num_components = nx.number_weakly_connected_components(dbg)
     component_iter = nx.weakly_connected_components(dbg)
     for component in tqdm(component_iter, desc='tile selection', total=num_components):
-        component_cdss = set([cds for n in component for cds in dbg.node[n]['cds']])
+        component_cdss = setreduce_attr(dbg, component, 'cds')
 
         # generate all candidate tiles/paths
         component_paths = []
         nterm_paths = []
         cterm_paths = []
-        for cds in component_cdss:
+        for cds in tqdm(component_cdss, desc='generating tiles'):
             orf_path = seq_to_path(str(orfs[cds].seq), kmer_size)
 
             if len(orfs[cds]) < tile_size:
@@ -347,13 +347,13 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
         cterm_paths = frozenset(cterm_paths)
 
         kmer_to_idxs = {}
-        for i, path in enumerate(component_paths):
+        for i, path in enumerate(tqdm(component_paths, desc='kmer mapping')):
             for kmer in path:
                 kmer_to_idxs.setdefault(kmer, []).append(i)
 
         # initialize path scores
         path_scores = []
-        for path in component_paths:
+        for path in tqdm(component_paths, desc='init scores'):
             if unweighted:
                 score = len(path)
             else:
@@ -369,7 +369,7 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
 
         # choose tiles
         num_component_tiles = ceil(len(component) * kmer_cov / (tile_size - kmer_size + 1))
-        for _ in trange(num_component_tiles, desc='current component'):
+        for _ in trange(num_component_tiles, desc='choosing tiles'):
             i = path_scores.argmax()
             path_scores[i] = np.ma.masked
             path = component_paths[i]
