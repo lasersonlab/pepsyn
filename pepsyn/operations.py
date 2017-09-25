@@ -182,14 +182,14 @@ def recode(seq, codon_sampler):
     return recoded
 
 
-def recode_site_from_cds(seq, site, codon_sampler, cds_start=None,
-                         cds_end=None, search_start=None):
+def recode_sites_from_cds(seq, sites, codon_sampler, cds_start=None,
+                          cds_end=None, search_start=None):
     """
     seq is a Bio.Seq.Seq
-    site is a Bio.Seq.Seq
+    site is a list[Bio.Seq.Seq]
     codon_sampler is a CodonSampler
     cds_start, cds_end are int; defaults to full seq; defines recodable region
-    search_start is int; default full seq; where to start search for site
+    search_start is int; default full seq; where to start search for sites
     """
     # validate input
     search_start = search_start if search_start is not None else 0
@@ -199,15 +199,22 @@ def recode_site_from_cds(seq, site, codon_sampler, cds_start=None,
         raise PepsynError('CDS length is not multiple of 3')
 
     # initial search for site; handle recursion breaking cases here
-    site_start = seq.find(site, search_start)
-    if site_start == -1:
+    # search for all potential sites
+    search_results = [(seq.find(site, search_start), len(site)) for site in sites]
+    # filter out sites that don't match
+    positive_matches = [tup for tup in search_results if tup[0] >= 0]
+    if len(positive_matches) == 0:
         return seq
-    site_end = site_start + len(site)
+    # choose earliest matching site coord
+    site_start = min([tup[0] for tup in positive_matches])
+    # for any site that starts at site_start (could be multiple), choose the
+    # largest site length
+    site_end = site_start + max([tup[1] for tup in positive_matches if tup[0] == site_start])
     if site_end <= cds_start or site_start >= cds_end:
-        # site doesn't overlap the CDS => move on further down the seq
-        return recode_site_from_cds(seq, site, codon_sampler,
-                                    cds_start=cds_start, cds_end=cds_end,
-                                    search_start=(site_start + 1))
+        # sites don't overlap the CDS => move on further down the seq
+        return recode_sites_from_cds(seq, sites, codon_sampler,
+                                     cds_start=cds_start, cds_end=cds_end,
+                                     search_start=(site_start + 1))
     # site needs to be recoded
     # computes offsets for the site boundaries to align them to coding frame
     start_offset = (site_start - cds_start) % 3
@@ -220,6 +227,13 @@ def recode_site_from_cds(seq, site, codon_sampler, cds_start=None,
     candidate = seq[:recode_start] + recoded_chunk + seq[recode_end:]
     # TODO: this can cause a maximum recursion error if it never finds a
     # recoded sequence without the site recursively
-    return recode_site_from_cds(candidate, site, codon_sampler,
-                                cds_start=cds_start, cds_end=cds_end,
-                                search_start=search_start)
+    return recode_sites_from_cds(candidate, sites, codon_sampler,
+                                 cds_start=cds_start, cds_end=cds_end,
+                                 search_start=search_start)
+
+
+def recode_site_from_cds(seq, site, codon_sampler, cds_start=None,
+                         cds_end=None, search_start=None):
+    return recode_sites_from_cds(seq, [site], codon_sampler,
+                                 cds_start=cds_start, cds_end=cds_end,
+                                 search_start=search_start)

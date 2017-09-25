@@ -18,8 +18,8 @@ from Bio.Alphabet.IUPAC import protein, unambiguous_dna
 import numpy as np
 
 from pepsyn.operations import (
-    tile, reverse_translate, recode_site_from_cds, x_to_ggsg,
-    disambiguate_iupac_aa, pad_ggsg, ctermpep)
+    tile, reverse_translate, recode_site_from_cds, recode_sites_from_cds,
+    x_to_ggsg, disambiguate_iupac_aa, pad_ggsg, ctermpep)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage)
 from pepsyn.error import PepsynError
@@ -130,6 +130,7 @@ class TestSiteRemoval(object):
     cds_start = 10
     cds_end = 28
     EcoRI = Seq('GAATTC', unambiguous_dna)
+    HindIII = Seq('AAGCTT', unambiguous_dna)
     codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
 
     def test_no_site(self):
@@ -152,6 +153,24 @@ class TestSiteRemoval(object):
         new_trans = new_seq[self.cds_start:self.cds_end].translate(
             table=self.codon_sampler.table)
         assert new_seq.find(self.EcoRI) == -1
+        assert new_seq != dna_seq
+        assert len(new_seq) == len(dna_seq)
+        assert new_seq[:self.cds_start] == dna_seq[:self.cds_start]
+        assert new_seq[self.cds_end:] == dna_seq[self.cds_end:]
+        assert new_trans == orig_trans
+
+    def test_with_two_sites_in_cds(self):
+        dna_seq = Seq(
+            'GAGATCCGGTCAAGCTTGAATTCAACGCAAGTTGTTAT', unambiguous_dna)
+        new_seq = recode_sites_from_cds(
+            dna_seq, [self.EcoRI, self.HindIII], self.codon_sampler,
+            self.cds_start, self.cds_end)
+        orig_trans = dna_seq[self.cds_start:self.cds_end].translate(
+            table=self.codon_sampler.table)
+        new_trans = new_seq[self.cds_start:self.cds_end].translate(
+            table=self.codon_sampler.table)
+        assert new_seq.find(self.EcoRI) == -1
+        assert new_seq.find(self.HindIII) == -1
         assert new_seq != dna_seq
         assert len(new_seq) == len(dna_seq)
         assert new_seq[:self.cds_start] == dna_seq[:self.cds_start]

@@ -29,8 +29,8 @@ from tqdm import tqdm, trange
 
 from pepsyn import __version__
 from pepsyn.operations import (
-    reverse_translate, recode_site_from_cds, x_to_ggsg, disambiguate_iupac_aa,
-    tile as tile_op, ctermpep as cterm_oligo, pad_ggsg)
+    reverse_translate, recode_site_from_cds, recode_sites_from_cds, x_to_ggsg,
+    disambiguate_iupac_aa, tile as tile_op, ctermpep as cterm_oligo, pad_ggsg)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage,
     zero_non_amber_stops, zero_low_freq_codons)
@@ -181,7 +181,8 @@ def revtrans(input, output, codon_table, codon_usage, sampler,
 @cli.command()
 @argument_input
 @argument_output
-@option('--site', help='Site to remove (e.g., EcoRI, AGCCT); case sensitive')
+@option('--site', multiple=True,
+        help='Site to remove (e.g., EcoRI, AGCCT); case sens; allow multiple')
 @option('--clip-left', type=int, default=0,
         help='Number of bases to clip from start of sequence to get to CDS')
 @option('--clip-right', type=int, default=0,
@@ -209,15 +210,15 @@ def recodesite(input, output, site, clip_left, clip_right, codon_table,
     elif sampler == 'uniform':
         codon_sampler = UniformCodonSampler()
 
-    site = site2dna(site)
-    # site is now a Bio.Seq.Seq
+    sites = [site2dna(s) for s in site]
+    # sites is now a list[Bio.Seq.Seq]
 
     for seqrecord in SeqIO.parse(input, 'fasta'):
         id_ = seqrecord.id
         cds_start = clip_left
         cds_end = len(seqrecord) - clip_right
-        seq = recode_site_from_cds(seqrecord.seq, site, codon_sampler,
-                                   cds_start, cds_end)
+        seq = recode_sites_from_cds(seqrecord.seq, sites, codon_sampler,
+                                    cds_start, cds_end)
         SeqIO.write(SeqRecord(seq, id_, description=''), output, 'fasta')
 
 
