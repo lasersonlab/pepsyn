@@ -37,6 +37,10 @@ from pepsyn.codons import (
 from pepsyn.util import site2dna, sliding_window
 
 
+def print_fasta(sr, out):
+    print('>{}\n{}'.format(sr.id, str(sr.seq)), file=out)
+
+
 @group(context_settings={'help_option_names': ['-h', '--help']})
 @version_option(__version__)
 def cli():
@@ -60,7 +64,7 @@ def tile(input, output, length, overlap):
         for (start, end, t) in tile_op(seqrecord.seq, length, overlap):
                 output_title = '{}|{}-{}'.format(seqrecord.id, start, end)
                 output_record = SeqRecord(t, output_title, description='')
-                SeqIO.write(output_record, output, 'fasta')
+                print_fasta(output_record, output)
 
 
 @cli.command()
@@ -76,7 +80,7 @@ def ctermpep(input, output, length, add_stop):
         if add_stop:
             output_title = '{}|STOP'.format(output_title)
         output_record = SeqRecord(oligo, output_title, description='')
-        SeqIO.write(output_record, output, 'fasta')
+        print_fasta(output_record, output)
 
 
 @cli.command()
@@ -86,7 +90,7 @@ def stripstop(input, output):
     """strip stop codons from end of protein sequence"""
     for seqrecord in SeqIO.parse(input, 'fasta'):
         seqrecord.seq = seqrecord.seq.rstrip('*')
-        SeqIO.write(seqrecord, output, 'fasta')
+        print_fasta(seqrecord, output)
 
 
 @cli.command()
@@ -98,7 +102,7 @@ def filterstop(input, output):
         if '*' in seqrecord.seq:
             continue
         seqrecord.seq = seqrecord.seq.rstrip('*')
-        SeqIO.write(seqrecord, output, 'fasta')
+        print_fasta(seqrecord, output)
 
 
 @cli.command()
@@ -120,7 +124,7 @@ def pad(input, output, length, terminus):
         else:
             output_title = seqrecord.id
         output_record = SeqRecord(padded, output_title, description='')
-        SeqIO.write(output_record, output, 'fasta')
+        print_fasta(output_record, output)
 
 
 @cli.command()
@@ -132,7 +136,7 @@ def prefix(input, output, prefix):
     for seqrecord in SeqIO.parse(input, 'fasta'):
         newseq = prefix + seqrecord.seq
         seqrecord.seq = newseq
-        SeqIO.write(seqrecord, output, 'fasta')
+        print_fasta(seqrecord, output)
 
 
 @cli.command()
@@ -144,7 +148,19 @@ def suffix(input, output, suffix):
     for seqrecord in SeqIO.parse(input, 'fasta'):
         newseq = seqrecord.seq + suffix
         seqrecord.seq = newseq
-        SeqIO.write(seqrecord, output, 'fasta')
+        print_fasta(seqrecord, output)
+
+
+@cli.command()
+@argument_input
+@argument_output
+@option('--left', '-l', default=0, help='number of bases to clip from left')
+@option('--right', '-r', default=0, help='number of bases to clip from right')
+def clip(input, output, left, right):
+    """clip bases from the ends of each sequence"""
+    for seqrecord in SeqIO.parse(input, 'fasta'):
+        stop = len(seqrecord) - right
+        print_fasta(seqrecord[left:stop], output)
 
 
 @cli.command()
@@ -175,7 +191,7 @@ def revtrans(input, output, codon_table, codon_usage, sampler,
     for seqrecord in tqdm(SeqIO.parse(input, 'fasta'), desc='revtrans', unit='seq'):
         dna_id = seqrecord.id
         dna_seq = reverse_translate(seqrecord.seq, codon_sampler)
-        SeqIO.write(SeqRecord(dna_seq, dna_id, description=''), output, 'fasta')
+        print_fasta(SeqRecord(dna_seq, dna_id, description=''), output)
 
 
 @cli.command()
@@ -219,7 +235,7 @@ def recodesite(input, output, site, clip_left, clip_right, codon_table,
         cds_end = len(seqrecord) - clip_right
         seq = recode_sites_from_cds(seqrecord.seq, sites, codon_sampler,
                                     cds_start, cds_end)
-        SeqIO.write(SeqRecord(seq, id_, description=''), output, 'fasta')
+        print_fasta(SeqRecord(seq, id_, description=''), output)
 
 
 @cli.command()
@@ -234,7 +250,7 @@ def x2ggsg(input, output):
         else:
             output_title = seqrecord.id
         output_record = SeqRecord(replacement, id=output_title, description='')
-        SeqIO.write(output_record, output, 'fasta')
+        print_fasta(output_record, output)
 
 
 @cli.command()
@@ -255,7 +271,7 @@ def disambiguateaa(input, output):
             else:
                 output_title = id_
             output_record = SeqRecord(unambig, output_title, description='')
-            SeqIO.write(output_record, output, 'fasta')
+            print_fasta(output_record, output)
 
 
 @cli.command()
