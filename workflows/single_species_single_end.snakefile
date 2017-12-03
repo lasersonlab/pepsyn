@@ -17,6 +17,7 @@ rule all:
         expand('coverage/{sample}.cov_genome.tsv', sample=config['samples']),
         expand('clustered_reads/{sample}.clustered.counts.tsv', sample=config['samples']),
         expand('annot/{sample}.inframe_inserts.counts.tsv', sample=config['samples']),
+        expand('ref/{sample}.uniq_frag.bed', sample=config['samples']),
         # expand('diversity/{sample}.recon_allreads.txt', sample=config['samples']),
         # expand('diversity/{sample}.recon_inframe.txt', sample=config['samples'])
 
@@ -230,3 +231,19 @@ rule recon_diversity_inframe:
         {params.python2} {params.recon} -R -t 1000 -o {output} {input}
         """
 
+rule gen_align_ref:
+    input:
+        'annot/{sample}.annot_inserts.tsv'
+    output:
+        'ref/{sample}.uniq_frag.bed'
+    shell:
+        r"""
+        # First awk script pulls out only relevant columns (and computes
+        # in-frame) into bed6 format:
+        # chrom, start, end, annot, inframe, strand
+        # Second awk script output only uniq lines (no sort req'd)
+        cat {input} \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{inframe = ($11 >= 0) && (($6 == "+" && ($2 - $11 + 1) % 3 == 0) || ($6 == "-" && ($3 - $12) % 3 == 0)); print $1, $2, $3, $16, inframe, $6}}' \
+            | awk '!($0 in seen) {{++seen[$0]; print $0}}' \
+            > {output}
+        """
