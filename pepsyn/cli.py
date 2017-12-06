@@ -298,8 +298,10 @@ def findsite(input, site, clip_left, clip_right):
 @argument_output
 @option('-k', '--kmer-size', type=int, required=True, help='k-mer size')
 @option('-t', '--tile-size', type=int, required=True, help='tile size')
-@option('-c', '--kmer-cov', type=float, default=1.5,
-        help='target avg k-mer coverage')
+@option('-c', '--kmer-cov', type=float,
+        help='target avg k-mer coverage (incompatible with -n)')
+@option('-n', '--num-tiles', type=int,
+        help='number of output tiles (incompatible with -c)')
 @option('-d', '--nterm-boost', type=float, default=1.,
         help='multiplier to increase representation of nterm tiles')
 @option('-b', '--cterm-boost', type=float, default=1.,
@@ -307,8 +309,8 @@ def findsite(input, site, clip_left, clip_right):
 @option('-p', '--prefix', default='tile', help='tile size')
 @option('-u', '--unweighted', is_flag=True,
         help='use unweighted k-mer coverage')
-def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
-                  cterm_boost, prefix, unweighted):
+def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, num_tiles,
+                  nterm_boost, cterm_boost, prefix, unweighted):
     """select protein tiles by maximizing k-mer coverage
 
     each tile is a fragment of an observed input ORF
@@ -320,6 +322,15 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
     from pepsyn.dbg import (
         gen_kmers, tiling_stats, orf_stats, seqrecords_to_dbg, setreduce_attr,
         seq_to_path, path_to_seq, incr_attr)
+
+    if kmer_cov and num_tiles:
+        print('Set -c/--kmer-cov OR -n/--num-tiles but not both',
+            file=sys.stderr)
+        sys.exit(1)
+    if not kmer_cov and not num_tiles:
+        print('Must set one of -c/--kmer-cov OR -n/--num-tiles',
+            file=sys.stderr)
+        sys.exit(1)
 
     # load data and build dbg
     orfs = {sr.id: sr for sr in SeqIO.parse(input, 'fasta')}
@@ -338,6 +349,7 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
             short_orf_names[tile] = orf.id
 
     # process each graph component separately
+    num_kmers = len(dbg)
     num_components = nx.number_weakly_connected_components(dbg)
     component_iter = nx.weakly_connected_components(dbg)
     for component in tqdm(component_iter, desc='tile selection', total=num_components):
@@ -384,8 +396,13 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
         path_scores = np.ma.asarray(path_scores)
         path_scores.harden_mask()
 
+        # set number of tiles for this component
+        if kmer_cov:
+            num_component_tiles = ceil(len(component) * kmer_cov / (tile_size - kmer_size + 1))
+        if num_tiles:
+            num_component_tiles = ceil(len(component) / num_kmers * num_tiles)
+
         # choose tiles
-        num_component_tiles = ceil(len(component) * kmer_cov / (tile_size - kmer_size + 1))
         for _ in trange(num_component_tiles, desc='choosing tiles'):
             i = path_scores.argmax()
             path_scores[i] = np.ma.masked
@@ -420,7 +437,7 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, nterm_boost,
             cdss = setreduce_attr(dbg, gen_kmers(tile, kmer_size), 'cds')
             if dbg.node[tile[:kmer_size]].get('nterm', False):
                 nterm = '|NTERM'
-            if dbg.node[tile[-kmer_size:]].get('cterm', False):
+            if dbg.node[tile[-kmer_size:]].get('end_node', False):
                 cterm = '|CTERM'
         cds = Counter(cdss).most_common(1)[0][0]
         print(f'>{prefix}{i:05d}|{cds}{nterm}{cterm}\n{tile}', file=output)

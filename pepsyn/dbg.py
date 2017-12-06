@@ -143,8 +143,8 @@ def update_debruijn_graph(dbg, sr, k):
         dbg.node[kmer].setdefault('cds', []).append(sr.id)
         dbg.node[kmer]['multiplicity'] = dbg.node[kmer].get('multiplicity', 0) + 1
     # annotate N/C-terminal nodes
-    dbg.node[kmers[0]]['nterm'] = True
-    dbg.node[kmers[-1]]['cterm'] = True
+    dbg.node[kmers[0]]['start_node'] = True
+    dbg.node[kmers[-1]]['end_node'] = True
 
 
 def orf_stats(dbg, orfs, tile_size):
@@ -188,8 +188,8 @@ def tiling_stats(dbg, tiles):
     stats.append(('max kmer coverage', graph_max_attr(dbg, 'weight')))
     weighted_cov = sum([d['multiplicity'] for d in dbg.node.values() if d.get('weight', 0) > 0]) / graph_sum_attr(dbg, 'multiplicity')
     stats.append(('multiplicity-weighted kmer coverage', weighted_cov))
-    nterm_cov = sum([1 for d in dbg.node.values() if (d.get('weight', 0) and d.get('nterm', False))]) / graph_sum_attr(dbg, 'nterm')
+    nterm_cov = sum([1 for d in dbg.node.values() if (d.get('weight', 0) and d.get('start_node', False))]) / graph_sum_attr(dbg, 'start_node')
     stats.append(('n-term kmer coverage', nterm_cov))
-    cterm_cov = sum([1 for d in dbg.node.values() if (d.get('weight', 0) and d.get('cterm', False))]) / graph_sum_attr(dbg, 'cterm')
+    cterm_cov = sum([1 for d in dbg.node.values() if (d.get('weight', 0) and d.get('end_node', False))]) / graph_sum_attr(dbg, 'end_node')
     stats.append(('c-term kmer coverage', cterm_cov))
     return stats
