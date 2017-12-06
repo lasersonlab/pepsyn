@@ -451,7 +451,10 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, num_tiles,
 @option('-k', '--kmer-size', type=int, required=True, help='k-mer size')
 @option('-t', '--tile-size', type=int, required=True, help='tile size')
 def proteintilestats(tiles, orfs, kmer_size, tile_size):
-    """compute some sequence statistics"""
+    """compute some sequence statistics
+
+    skips tiles shorter than kmer-size
+    """
     from pepsyn.dbg import (
         tiling_stats, orf_stats, fasta_to_dbg, sequence_incr_attr)
 
@@ -462,6 +465,8 @@ def proteintilestats(tiles, orfs, kmer_size, tile_size):
     # annotate DBG with tile weights
     tiles = [str(sr.seq) for sr in SeqIO.parse(tiles, 'fasta')]
     for tile in tiles:
+        if len(tile) < kmer_size:
+            continue
         sequence_incr_attr(dbg, tile, kmer_size, 'weight')
 
     for (k, v) in orf_stats(dbg, orfs, tile_size):
