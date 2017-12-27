@@ -152,6 +152,7 @@ def orf_stats(dbg, orfs, tile_size):
     kmer_size = len(dbg.nodes()[0])
     stats.append(('kmer size', kmer_size))
     stats.append(('num ORFs', len(orfs)))
+    stats.append(('total ORF residues', sum([len(orf) for orf in orfs])))
     stats.append(
         ('num ORFs smaller than tile size',
          len(list(filter(lambda x: len(x) < tile_size, orfs)))))
@@ -180,6 +181,7 @@ def tiling_stats(dbg, tiles):
     stats = []
     stats.append(('tile size', len(next(iter(tiles)))))
     stats.append(('num tiles', len(tiles)))
+    stats.append(('total tiling residues', sum([len(tile) for tile in tiles])))
     stats.append(('num kmers covered', graph_num_pos_attr(dbg, 'weight')))
     stats.append(
         ('frac kmers covered', graph_num_pos_attr(dbg, 'weight') / len(dbg)))
