@@ -101,7 +101,7 @@ def _ggsg_generator():
 def x_to_ggsg(seq):
     """replace Xs with a Serine-Glycine linker (GGSG pattern)
 
-    seq and return value are Bio.Seq.Seq
+    seq and return value are strings
     """
     if 'X' not in seq:
         return seq
@@ -114,7 +114,7 @@ def x_to_ggsg(seq):
             ggsg = _ggsg_generator()
         else:
             replacement.append(next(ggsg))
-    return Seq(''.join(replacement), seq.alphabet)
+    return ''.join(replacement)
 
 
 def pad_ggsg(seq, length, terminus='C'):

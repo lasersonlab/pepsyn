@@ -34,7 +34,7 @@ from pepsyn.operations import (
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage,
     zero_non_amber_stops, zero_low_freq_codons)
-from pepsyn.util import site2dna, sliding_window
+from pepsyn.util import site2dna, sliding_window, readfq
 
 
 def print_fasta(sr, out):
@@ -60,11 +60,10 @@ argument_output = argument('output', type=File('w'))
 @option('--overlap', '-p', type=int, help='Overlap of oligos')
 def tile(input, output, length, overlap):
     """tile a set of sequences"""
-    for seqrecord in tqdm(SeqIO.parse(input, 'fasta'), desc='tile', unit='seq'):
-        for (start, end, t) in tile_op(seqrecord.seq, length, overlap):
-                output_title = '{}|{}-{}'.format(seqrecord.id, start, end)
-                output_record = SeqRecord(t, output_title, description='')
-                print_fasta(output_record, output)
+    for (name, seq, qual) in tqdm(readfq(input), desc='tile', unit='seq'):
+        for (start, end, t) in tile_op(seq, length, overlap):
+                output_title = f'{name}|{start}-{end}'
+                print(f'>{output_title}\n{t}', file=output)
 
 
 @cli.command()
@@ -74,13 +73,12 @@ def tile(input, output, length, overlap):
 @option('--add-stop', '-s', is_flag=True, help='Add a stop codon to peptide')
 def ctermpep(input, output, length, add_stop):
     """extract C-terminal peptide (AA alphabets)"""
-    for seqrecord in tqdm(SeqIO.parse(input, 'fasta'), desc='ctermpep', unit='seq'):
-        oligo = cterm_oligo(seqrecord.seq, length, add_stop=add_stop)
-        output_title = '{}|CTERM'.format(seqrecord.id)
+    for (name, seq, qual) in tqdm(readfq(input), desc='ctermpep', unit='seq'):
+        oligo = cterm_oligo(seq, length, add_stop=add_stop)
+        output_title = f'{name}|CTERM'
         if add_stop:
-            output_title = '{}|STOP'.format(output_title)
-        output_record = SeqRecord(oligo, output_title, description='')
-        print_fasta(output_record, output)
+            output_title = f'{output_title}|STOP'
+        print(f'>{output_title}\n{oligo}', file=output)
 
 
 @cli.command()
@@ -88,9 +86,9 @@ def ctermpep(input, output, length, add_stop):
 @argument_output
 def stripstop(input, output):
     """strip stop codons from end of protein sequence"""
-    for seqrecord in SeqIO.parse(input, 'fasta'):
-        seqrecord.seq = seqrecord.seq.rstrip('*')
-        print_fasta(seqrecord, output)
+    for (name, seq, qual) in readfq(input):
+        seq = seq.rstrip('*')
+        print(f'>{name}\n{seq}', file=output)
 
 
 @cli.command()
@@ -98,11 +96,11 @@ def stripstop(input, output):
 @argument_output
 def filterstop(input, output):
     """filter out sequences that contain stop codons (*)"""
-    for seqrecord in SeqIO.parse(input, 'fasta'):
-        if '*' in seqrecord.seq:
+    for (name, seq, qual) in readfq(input):
+        if '*' in seq:
             continue
-        seqrecord.seq = seqrecord.seq.rstrip('*')
-        print_fasta(seqrecord, output)
+        seq = seq.rstrip('*')
+        print(f'>{name}\n{seq}', file=output)
 
 
 @cli.command()
@@ -115,16 +113,14 @@ def filterstop(input, output):
         help='Pad the C-terminus')
 def pad(input, output, length, terminus):
     """pad peptide to target length with GSGG"""
-    for seqrecord in SeqIO.parse(input, 'fasta'):
-        padded = pad_ggsg(seqrecord.seq, length, terminus)
-        pad_len = len(padded) - len(seqrecord)
+    for (name, seq, qual) in readfq(input):
+        padded = pad_ggsg(seq, length, terminus)
+        pad_len = len(padded) - len(seq)
         if pad_len > 0:
-            output_title = '{}|{}-PADDED-{}'.format(seqrecord.id, terminus,
-                                                    pad_len)
+            output_title = f'{name}|{terminus}-PADDED-{pad_len}'
         else:
-            output_title = seqrecord.id
-        output_record = SeqRecord(padded, output_title, description='')
-        print_fasta(output_record, output)
+            output_title = name
+        print(f'>{output_title}\n{padded}', file=output)
 
 
 @cli.command()
@@ -133,10 +129,9 @@ def pad(input, output, length, terminus):
 @option('--prefix', '-p', help='DNA sequence to prefix each oligo')
 def prefix(input, output, prefix):
     """add a prefix to each sequence"""
-    for seqrecord in SeqIO.parse(input, 'fasta'):
-        newseq = prefix + seqrecord.seq
-        seqrecord.seq = newseq
-        print_fasta(seqrecord, output)
+    for (name, seq, qual) in readfq(input):
+        newseq = prefix + seq
+        print(f'>{name}\n{newseq}', file=output)
 
 
 @cli.command()
@@ -145,10 +140,9 @@ def prefix(input, output, prefix):
 @option('--suffix', '-s', help='DNA sequence to suffix each oligo')
 def suffix(input, output, suffix):
     """add a suffix to each sequence"""
-    for seqrecord in SeqIO.parse(input, 'fasta'):
-        newseq = seqrecord.seq + suffix
-        seqrecord.seq = newseq
-        print_fasta(seqrecord, output)
+    for (name, seq, qual) in readfq(input):
+        newseq = seq + suffix
+        print(f'>{name}\n{newseq}', file=output)
 
 
 @cli.command()
@@ -158,9 +152,9 @@ def suffix(input, output, suffix):
 @option('--right', '-r', default=0, help='number of bases to clip from right')
 def clip(input, output, left, right):
     """clip bases from the ends of each sequence"""
-    for seqrecord in SeqIO.parse(input, 'fasta'):
-        stop = len(seqrecord) - right
-        print_fasta(seqrecord[left:stop], output)
+    for (name, seq, qual) in readfq(input):
+        stop = len(seq) - right
+        print(f'>{name}\n{seq[left:stop]}', file=output)
 
 
 @cli.command()
@@ -243,14 +237,13 @@ def recodesite(input, output, site, clip_left, clip_right, codon_table,
 @argument_output
 def x2ggsg(input, output):
     """replace stretches of Xs with Serine-Glycine linker (GGSG pattern)"""
-    for seqrecord in SeqIO.parse(input, 'fasta'):
-        replacement = x_to_ggsg(seqrecord.seq)
-        if replacement != seqrecord.seq:
-            output_title = '{}|{}'.format(seqrecord.id, 'withGSlinker')
+    for (name, seq, qual) in readfq(input):
+        replacement = x_to_ggsg(seq)
+        if replacement != seq:
+            output_title = f'{name}|withGSlinker'
         else:
-            output_title = seqrecord.id
-        output_record = SeqRecord(replacement, id=output_title, description='')
-        print_fasta(output_record, output)
+            output_title = name
+        print(f'>{output_title}\n{replacement}', file=output)
 
 
 @cli.command()
@@ -283,14 +276,13 @@ def disambiguateaa(input, output):
         help='Number of bases to clip from end of sequence to get to CDS')
 def findsite(input, site, clip_left, clip_right):
     """find locations of a site"""
-    query = site2dna(site)
-    for seqrecord in SeqIO.parse(input, 'fasta'):
-        id_ = seqrecord.id
+    query = str(site2dna(site))
+    for (name, seq, qual) in readfq(input):
         start = clip_left
-        end = len(seqrecord) - clip_right
-        idx = seqrecord.seq[start:end].find(query)
+        end = len(seq) - clip_right
+        idx = seq[start:end].find(query)
         if idx >= 0:
-            tqdm.write('{}|{}|{}'.format(id_, site, idx + start))
+            print(f'{name}|{site}|{idx + start}', file=output)
 
 
 @cli.command()
