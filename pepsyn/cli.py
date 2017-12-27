@@ -378,7 +378,7 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, num_tiles,
             if unweighted:
                 score = len(path)
             else:
-                score = sum(dbg.node[kmer]['multiplicity'] for kmer in path)
+                score = sum(dbg.nodes[kmer]['multiplicity'] for kmer in path)
             # give a boost to cterm or nterm tiles
             if path in nterm_paths:
                 score += ceil(tile_size * nterm_boost)
@@ -408,7 +408,7 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, num_tiles,
                 if unweighted:
                     path_scores.data[idxs] = path_scores.data[idxs] - 1
                 else:
-                    path_scores.data[idxs] = path_scores.data[idxs] - dbg.node[kmer]['multiplicity']
+                    path_scores.data[idxs] = path_scores.data[idxs] - dbg.nodes[kmer]['multiplicity']
                 zeros = path_scores.data < 0
                 path_scores.data[zeros] = 0
 
@@ -427,9 +427,9 @@ def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, num_tiles,
             cterm = '|CTERM'
         else:
             cdss = setreduce_attr(dbg, gen_kmers(tile, kmer_size), 'cds')
-            if dbg.node[tile[:kmer_size]].get('nterm', False):
+            if dbg.nodes[tile[:kmer_size]].get('nterm', False):
                 nterm = '|NTERM'
-            if dbg.node[tile[-kmer_size:]].get('end_node', False):
+            if dbg.nodes[tile[-kmer_size:]].get('end_node', False):
                 cterm = '|CTERM'
         cds = Counter(cdss).most_common(1)[0][0]
         print(f'>{prefix}{i:05d}|{cds}{nterm}{cterm}\n{tile}', file=output)

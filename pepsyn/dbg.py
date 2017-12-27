@@ -23,45 +23,45 @@ from Bio import SeqIO
 
 
 def incr_attr(graph, node, attr, amt=1):
-    graph.node[node][attr] = graph.node[node].get(attr, 0) + amt
+    graph.nodes[node][attr] = graph.nodes[node].get(attr, 0) + amt
 
 
 def zero_attr(graph, node, attr):
-    graph.node[node][attr] = 0
+    graph.nodes[node][attr] = 0
 
 
 def graph_zero_attr(graph, attr):
-    for node in graph.nodes():
-        graph.node[node][attr] = 0
+    for node in graph:
+        graph.nodes[node][attr] = 0
 
 
 def sum_attr(graph, nodes, attr):
-    return sum([graph.node[node].get(attr, 0) for node in nodes])
+    return sum([graph.nodes[node].get(attr, 0) for node in nodes])
 
 
 def setreduce_attr(graph, nodes, attr):
     result = set()
     for node in nodes:
-        result |= set(graph.node.get(node, {}).get(attr, []))
+        result |= set(graph.nodes.get(node, {}).get(attr, []))
     return result
 
 
 def max_attr(graph, nodes, attr):
-    return max([graph.node[node].get(attr, 0) for node in nodes])
+    return max([graph.nodes[node].get(attr, 0) for node in nodes])
 
 
 def graph_sum_attr(graph, attr):
-    return sum([d.get(attr, 0) for d in graph.node.values()])
+    return sum([v for (_, v) in graph.nodes(data=attr, default=0)])
 
 
 def graph_max_attr(graph, attr):
-    return max([d.get(attr, 0) for d in graph.node.values()])
+    return max([v for (_, v) in graph.nodes(data=attr, default=0)])
 
 
 def graph_num_pos_attr(graph, attr):
     num_pos = 0
-    for d in graph.node.values():
-        if d.get(attr, 0) > 0:
+    for (_, v) in graph.nodes(data=attr, default=0):
+        if v > 0:
             num_pos += 1
     return num_pos
 
@@ -90,7 +90,7 @@ def sequence_incr_attr(dbg, s, k, attr, amt=1):
 def sequence_setreduce_attr(dbg, s, k, attr):
     result = set()
     for kmer in gen_kmers(s, k):
-        result |= set(dbg.node.get(kmer, {}).get(attr, []))
+        result |= set(dbg.nodes.get(kmer, {}).get(attr, []))
     return result
 
 
@@ -140,16 +140,16 @@ def update_debruijn_graph(dbg, sr, k):
         dbg.add_path(kmers)
     # add cds labels to nodes and count "multiplicity"
     for kmer in kmers:
-        dbg.node[kmer].setdefault('cds', []).append(sr.id)
-        dbg.node[kmer]['multiplicity'] = dbg.node[kmer].get('multiplicity', 0) + 1
+        dbg.nodes[kmer].setdefault('cds', []).append(sr.id)
+        dbg.nodes[kmer]['multiplicity'] = dbg.nodes[kmer].get('multiplicity', 0) + 1
     # annotate N/C-terminal nodes
-    dbg.node[kmers[0]]['start_node'] = True
-    dbg.node[kmers[-1]]['end_node'] = True
+    dbg.nodes[kmers[0]]['start_node'] = True
+    dbg.nodes[kmers[-1]]['end_node'] = True
 
 
 def orf_stats(dbg, orfs, tile_size):
     stats = []
-    kmer_size = len(dbg.nodes()[0])
+    kmer_size = len(next(iter(dbg)))
     stats.append(('kmer size', kmer_size))
     stats.append(('num ORFs', len(orfs)))
     stats.append(('total ORF residues', sum([len(orf) for orf in orfs])))
@@ -167,7 +167,7 @@ def orf_stats(dbg, orfs, tile_size):
     stats.append(
         ('approx num tiles in naive 1x tiling',
          sum([ceil(len(orf) / tile_size) for orf in orfs])))
-    multiplicities = [d['multiplicity'] for d in dbg.node.values()]
+    multiplicities = [mult for (_, mult) in dbg.nodes(data='multiplicity')]
     stats.append(('num multiplicity-1 kmers', multiplicities.count(1)))
     stats.append(
         ('avg kmer multiplicity', sum(multiplicities) / len(multiplicities)))
@@ -188,10 +188,10 @@ def tiling_stats(dbg, tiles):
     stats.append(
         ('avg kmer coverage', graph_sum_attr(dbg, 'weight') / len(dbg)))
     stats.append(('max kmer coverage', graph_max_attr(dbg, 'weight')))
-    weighted_cov = sum([d['multiplicity'] for d in dbg.node.values() if d.get('weight', 0) > 0]) / graph_sum_attr(dbg, 'multiplicity')
+    weighted_cov = sum([d['multiplicity'] for (_, d) in dbg.nodes(data=True) if d.get('weight', 0) > 0]) / graph_sum_attr(dbg, 'multiplicity')
     stats.append(('multiplicity-weighted kmer coverage', weighted_cov))
-    nterm_cov = sum([1 for d in dbg.node.values() if (d.get('weight', 0) and d.get('start_node', False))]) / graph_sum_attr(dbg, 'start_node')
+    nterm_cov = sum([1 for (_, d) in dbg.nodes(data=True) if (d.get('weight', 0) and d.get('start_node', False))]) / graph_sum_attr(dbg, 'start_node')
     stats.append(('n-term kmer coverage', nterm_cov))
-    cterm_cov = sum([1 for d in dbg.node.values() if (d.get('weight', 0) and d.get('end_node', False))]) / graph_sum_attr(dbg, 'end_node')
+    cterm_cov = sum([1 for (_, d) in dbg.nodes(data=True) if (d.get('weight', 0) and d.get('end_node', False))]) / graph_sum_attr(dbg, 'end_node')
     stats.append(('c-term kmer coverage', cterm_cov))
     return stats
