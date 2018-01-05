@@ -30,6 +30,6 @@ setup(
     license='Apache License, Version 2.0',
     classifiers=['Programming Language :: Python :: 3'],
     packages=find_packages(),
-    install_requires=['click', 'tqdm', 'biopython'],
+    install_requires=['click', 'tqdm', 'biopython', 'pyyaml'],
     entry_points={'console_scripts': ['pepsyn = pepsyn.cli:cli']}
 )
