@@ -15,7 +15,7 @@
 import os
 import sys
 from os.path import join as pjoin
-from math import ceil
+from math import ceil, inf
 from collections import Counter
 from logging import captureWarnings
 
@@ -76,7 +76,10 @@ def tile(input, output, length, overlap):
 @option('--length', '-l', type=int, help='Length of output C-terminal oligo')
 @option('--add-stop', '-s', is_flag=True, help='Add a stop codon to peptide')
 def ctermpep(input, output, length, add_stop):
-    """extract C-terminal peptide (AA alphabets)"""
+    """extract C-terminal peptide (AA alphabets)
+
+    will return entirety of seqs shorter than length
+    """
     for (name, seq, qual) in tqdm(readfq(input), desc='ctermpep', unit='seq'):
         oligo = cterm_oligo(seq, length, add_stop=add_stop)
         output_title = f'{name}|CTERM'
@@ -104,6 +107,25 @@ def filterstop(input, output):
         if '*' in seq:
             continue
         seq = seq.rstrip('*')
+        print(f'>{name}\n{seq}', file=output)
+
+
+@cli.command()
+@argument_input
+@argument_output
+@option('-m', '--min-len', type=int, help='Min length of sequence to keep')
+@option('-M', '--max-len', type=int, help='Max length of sequence to keep')
+def filterlen(input, output, min_len, max_len):
+    """filter sequences of a given length"""
+    if min_len is None:
+        min_len = 0
+    if max_len is None:
+        max_len = inf
+    for (name, seq, qual) in readfq(input):
+        if len(seq) < min_len:
+            continue
+        if len(seq) > max_len:
+            continue
         print(f'>{name}\n{seq}', file=output)
 
 
@@ -364,7 +386,7 @@ def greedykmercov(input, output, tile_size, dbg_path, kmer_cov, num_tiles,
     # load preselected tiles
     preselected_tiles = [seq for (name, seq, qual) in readfq(preselected_tiles_path)]
     preselected_kmer_counts = Counter(
-        [kmer for tile in preselected_tiles for kmer in gen_kmers(tile, kmer_size)])
+        [kmer for tile in preselected_tiles for kmer in gen_kmers(tile, kmer_size, yield_short=True)])
 
     # process each graph component separately
     component_iter = tqdm(nx.weakly_connected_components(dbg), unit='comp',
