@@ -15,9 +15,11 @@
 
 from math import ceil
 
+import numpy as np
 import networkx as nx
-from Bio import SeqIO
+from tqdm import tqdm
 
+from pepsyn.util import readfq
 
 # some utilities for working with graphs
 
@@ -42,7 +44,7 @@ def sum_attr(graph, nodes, attr):
 def setreduce_attr(graph, nodes, attr):
     result = set()
     for node in nodes:
-        result |= set(graph.nodes.get(node, {}).get(attr, []))
+        result |= set(graph.nodes.get(node, {}).get(attr, set()))
     return result
 
 
@@ -106,92 +108,133 @@ def gen_kmers(s, k, yield_short=False):
         yield s[i:i + k]
 
 
-def seqrecords_to_dbg(seqrecords, k, tqdm=None, skip_short=False):
-    dbg = nx.DiGraph()
-    for sr in seqrecords:
-        if tqdm is not None:
-            tqdm.update()
-        if skip_short and len(sr) < k:
-            continue
-        update_debruijn_graph(dbg, sr, k)
-    return dbg
-
-
-def fasta_to_dbg(fasta_file, k, tqdm=None, skip_short=False):
-    return seqrecords_to_dbg(
-        SeqIO.parse(fasta_file, 'fasta'), k, tqdm=tqdm, skip_short=skip_short)
-
-
-def update_debruijn_graph(dbg, sr, k):
+def update_debruijn_graph(dbg, k, seq, name=None):
     """update de bruijn graph with a new sequence
 
     dbg is nx.DiGraph to mutate
-    sr is Bio.SequenceRecord
     k is int k-mer size
+    seq is str
+    name is optional str
     """
-    s = str(sr.seq)
-    if len(s) < k:
-        raise ValueError('len(record) < k:\n{}'.format(str(sr)))
-    kmers = list(gen_kmers(s, k))
+    if len(seq) < k:
+        raise ValueError(f'len(seq) < k:\n{name}\n{seq}')
     # define the graph structure
+    kmers = list(gen_kmers(seq, k))
     if len(kmers) == 1:
         dbg.add_nodes_from(kmers)
     else:
         dbg.add_path(kmers)
-    # add cds labels to nodes and count "multiplicity"
+    # add orf labels to nodes and count "multiplicity"
     for kmer in kmers:
-        dbg.nodes[kmer].setdefault('cds', []).append(sr.id)
+        if name:
+            dbg.nodes[kmer].setdefault('orf', set()).add(name)
         dbg.nodes[kmer]['multiplicity'] = dbg.nodes[kmer].get('multiplicity', 0) + 1
     # annotate N/C-terminal nodes
     dbg.nodes[kmers[0]]['start_node'] = True
     dbg.nodes[kmers[-1]]['end_node'] = True
 
 
-def orf_stats(dbg, orfs, tile_size):
-    stats = []
+def name_seq_pairs_to_dbg(pairs, k, tqdm=None, ignore_short=False):
+    """build de bruijn graph from sequences
+
+    pairs is an iter of (name, seq) pairs (iter[(str, str)]); name can be None
+    """
+    dbg = nx.DiGraph()
+    for (name, seq) in pairs:
+        if tqdm is not None:
+            tqdm.update()
+        if ignore_short and len(seq) < k:
+            continue
+        update_debruijn_graph(dbg, k, seq, name)
+    return dbg
+
+
+def seqrecords_to_dbg(seqrecords, k, tqdm=None, ignore_short=False):
+    return name_seq_pairs_to_dbg(
+        ((sr.id, str(sr.seq)) for sr in seqrecords),
+        k, tqdm, ignore_short)
+
+
+def fasta_handle_to_dbg(fasta_handle, k, tqdm=None, ignore_short=False):
+    return name_seq_pairs_to_dbg(
+        ((name, seq) for (name, seq, qual) in readfq(fasta_handle)),
+        k, tqdm, ignore_short)
+
+
+def fasta_file_to_dbg(fasta_file, k, tqdm=None, ignore_short=False):
+    with open(fasta_file, 'r') as ip:
+        return fasta_handle_to_dbg(ip, k, tqdm, ignore_short)
+
+
+def dbg_orf_tile_stats(dbg, orfs, tiles, cov_attr='coverage'):
+    """compute stats of orfs and tile relative to dbg
+
+    dbg is a de bruijn graph
+    orfs and tiles are lists of sequences
+
+    NOTE: this operation mutates the in-memory dbg by computing coverage of
+    each kmer into the cov_attr attribute
+
+    some kmers in the tiles may not be found in the dbg
+    """
+    tile_lens = np.asarray([len(t) for t in tiles])
+    orf_lens = np.asarray([len(o) for o in orfs])
     kmer_size = len(next(iter(dbg)))
-    stats.append(('kmer size', kmer_size))
-    stats.append(('num ORFs', len(orfs)))
-    stats.append(('total ORF residues', sum([len(orf) for orf in orfs])))
-    stats.append(
-        ('num ORFs smaller than tile size',
-         len(list(filter(lambda x: len(x) < tile_size, orfs)))))
-    stats.append(
-        ('num ORFs smaller than k-mer size',
-         len(list(filter(lambda x: len(x) < kmer_size, orfs)))))
-    stats.append(('total ORF-observed kmers', len(dbg)))
-    stats.append(('max theoretical kmers per tile', tile_size - kmer_size + 1))
-    stats.append(
-        ('min theoretical tiles for perfect kmer cov',
-         ceil(len(dbg) / (tile_size - kmer_size + 1))))
-    stats.append(
-        ('approx num tiles in naive 1x tiling',
-         sum([ceil(len(orf) / tile_size) for orf in orfs])))
-    multiplicities = [mult for (_, mult) in dbg.nodes(data='multiplicity')]
-    stats.append(('num multiplicity-1 kmers', multiplicities.count(1)))
-    stats.append(
-        ('avg kmer multiplicity', sum(multiplicities) / len(multiplicities)))
-    stats.append(('max kmer multiplicity', max(multiplicities)))
-    stats.append(
-        ('num components', nx.number_weakly_connected_components(dbg)))
-    return stats
+    tile_size = int(round(np.median(tile_lens)).tolist())
 
+    # compute coverage of tiles on dbg
+    for tile in tqdm(tiles, desc='computing coverage'):
+        for kmer in gen_kmers(tile, kmer_size, yield_short=True):
+            if dbg.has_node(kmer):
+                dbg.nodes[kmer][cov_attr] = dbg.nodes[kmer].get(cov_attr, 0) + 1
 
-def tiling_stats(dbg, tiles):
-    stats = []
-    stats.append(('tile size', len(next(iter(tiles)))))
-    stats.append(('num tiles', len(tiles)))
-    stats.append(('total tiling residues', sum([len(tile) for tile in tiles])))
-    stats.append(('num kmers covered', graph_num_pos_attr(dbg, 'weight')))
-    stats.append(
-        ('frac kmers covered', graph_num_pos_attr(dbg, 'weight') / len(dbg)))
-    stats.append(
-        ('avg kmer coverage', graph_sum_attr(dbg, 'weight') / len(dbg)))
-    stats.append(('max kmer coverage', graph_max_attr(dbg, 'weight')))
-    weighted_cov = sum([d['multiplicity'] for (_, d) in dbg.nodes(data=True) if d.get('weight', 0) > 0]) / graph_sum_attr(dbg, 'multiplicity')
-    stats.append(('multiplicity-weighted kmer coverage', weighted_cov))
-    nterm_cov = sum([1 for (_, d) in dbg.nodes(data=True) if (d.get('weight', 0) and d.get('start_node', False))]) / graph_sum_attr(dbg, 'start_node')
-    stats.append(('n-term kmer coverage', nterm_cov))
-    cterm_cov = sum([1 for (_, d) in dbg.nodes(data=True) if (d.get('weight', 0) and d.get('end_node', False))]) / graph_sum_attr(dbg, 'end_node')
-    stats.append(('c-term kmer coverage', cterm_cov))
+    coverages = np.asarray([cov for (_, cov) in dbg.nodes(data=cov_attr, default=0)])
+    multiplicities = np.asarray([mult for (_, mult) in dbg.nodes(data='multiplicity')])
+    nterms = np.asarray([s if s else False for (_, s) in dbg.nodes(data='start_node')])
+    cterms = np.asarray([e if e else False for (_, e) in dbg.nodes(data='end_node')])
+
+    assert len(coverages) == len(dbg)
+    assert len(multiplicities) == len(dbg)
+    assert graph_sum_attr(dbg, 'multiplicity') == multiplicities.sum()
+
+    stats = {}
+    stats['kmer_size'] = kmer_size
+    stats['tile_size'] = tile_size
+    stats['num_orfs'] = len(orfs)
+    stats['num_tiles'] = len(tiles)
+    stats['total_orf_residues'] = orf_lens.sum().tolist()
+    stats['total_tile_residues'] = tile_lens.sum().tolist()
+    stats['avg_orf_coverage'] = tile_lens.sum().tolist() / orf_lens.sum().tolist()
+    stats['num_orfs_smaller_than_kmer_size'] = (orf_lens < kmer_size).sum().tolist()
+    stats['num_orfs_smaller_than_tile_size'] = (orf_lens < tile_size).sum().tolist()
+    stats['num_observed_kmers'] = len(dbg)
+    stats['max_theor_kmers_per_tile'] = tile_size - kmer_size + 1
+    stats['min_theor_tiles_1x_cov'] = ceil(len(dbg) / (tile_size - kmer_size + 1))
+    stats['approx_num_tiles_naive_1x_tiling'] = np.ceil(orf_lens / tile_size).sum().tolist()
+    stats['num_multiplicity_1_kmers'] = (multiplicities == 1).sum().tolist()
+    stats['num_multiplicity_gt1_kmers'] = (multiplicities > 1).sum().tolist()
+    stats['avg_kmer_multiplicity'] = multiplicities.mean().tolist()
+    stats['max_kmer_multiplicity'] = multiplicities.max().tolist()
+    stats['num_dbg_components'] = nx.number_weakly_connected_components(dbg)
+    stats['num_kmers_covered'] = (coverages > 0).sum().tolist()
+    stats['num_kmers_missed'] = (coverages == 0).sum().tolist()
+    stats['frac_kmers_covered'] = (coverages > 0).sum().tolist() / len(coverages)
+    stats['frac_kmers_covered_gt1'] = (coverages > 1).sum().tolist() / len(coverages)
+    stats['avg_kmer_coverage'] = coverages.mean().tolist()
+    stats['median_kmer_coverage'] = int(np.median(coverages).tolist())
+    stats['max_kmer_coverage'] = coverages.max().tolist()
+    stats['frac_mult_weighted_kmers_covered'] =  (
+        multiplicities[coverages > 0].sum() / multiplicities.sum()).tolist()
+    stats['nterm_kmer_cov'] = ((coverages[nterms] > 0).sum() / nterms.sum()).tolist()
+    stats['cterm_kmer_cov'] = ((coverages[cterms] > 0).sum() / cterms.sum()).tolist()
+    # histograms
+    (hist, bin_edges) = np.histogram(tile_lens, bins=range(max(tile_lens) + 1))
+    stats['tile_lens'] = {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
+    (hist, bin_edges) = np.histogram(orf_lens, bins=range(max(orf_lens) + 1))
+    stats['orf_lens'] = {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
+    (hist, bin_edges) = np.histogram(multiplicities, bins=range(max(multiplicities) + 1))
+    stats['mult_hist'] = {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
+    (hist, bin_edges) = np.histogram(coverages, bins=range(max(coverages) + 1))
+    stats['cov_hist'] = {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
+
     return stats

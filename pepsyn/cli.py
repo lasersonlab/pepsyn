@@ -12,7 +12,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import os
 import sys
+from os.path import join as pjoin
 from math import ceil
 from collections import Counter
 from logging import captureWarnings
@@ -21,11 +23,13 @@ from logging import captureWarnings
 captureWarnings(True)
 
 from click import (
-    group, command, option, argument, File, Choice, Path, version_option)
+    group, command, option, argument, File, Choice, Path, version_option,
+    Abort, UsageError)
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Data.CodonTable import standard_dna_table
 from tqdm import tqdm, trange
+import yaml
 
 from pepsyn import __version__
 from pepsyn.operations import (
@@ -287,181 +291,167 @@ def findsite(input, site, clip_left, clip_right):
 
 @cli.command()
 @argument_input
-@argument_output
+@argument('output_path', type=Path(exists=False))
 @option('-k', '--kmer-size', type=int, required=True, help='k-mer size')
+def builddbg(input, output_path, kmer_size):
+    """build a de bruijn graph
+
+    ignores input sequences shorter than the kmer size
+
+    output path with .gz will write compressed data
+    """
+    try:
+        import networkx as nx
+        from pepsyn.dbg import fasta_handle_to_dbg
+    except ImportError:
+        raise Abort('builddbg requires NetworkX')
+
+    with tqdm(desc='building dbg') as pbar:
+        dbg = fasta_handle_to_dbg(input, kmer_size, tqdm=pbar,
+                                  ignore_short=True)
+    nx.write_gpickle(dbg, output_path)
+
+
+@cli.command()
+@argument_input
+@argument_output
 @option('-t', '--tile-size', type=int, required=True, help='tile size')
+@option('-d', '--dbg-path', type=Path(exists=True, dir_okay=False),
+        required=True,
+        help='path to prebuilt de bruijn graph (pickle file; .gz okay)')
 @option('-c', '--kmer-cov', type=float,
         help='target avg k-mer coverage (incompatible with -n)')
 @option('-n', '--num-tiles', type=int,
         help='number of output tiles (incompatible with -c)')
-@option('-d', '--nterm-boost', type=float, default=1.,
-        help='multiplier to increase representation of nterm tiles')
-@option('-b', '--cterm-boost', type=float, default=1.,
-        help='multiplier to increase representation of cterm tiles')
-@option('-p', '--prefix', default='tile', help='tile size')
-@option('-u', '--unweighted', is_flag=True,
-        help='use unweighted k-mer coverage')
-def greedykmercov(input, output, kmer_size, tile_size, kmer_cov, num_tiles,
-                  nterm_boost, cterm_boost, prefix, unweighted):
-    """select protein tiles by maximizing k-mer coverage
+@option('-p', '--preselected-tiles-path', type=File('r'),
+        help='fasta file containing previously selected tiles')
+def greedykmercov(input, output, tile_size, dbg_path, kmer_cov, num_tiles,
+                  preselected_tiles_path):
+    """select protein tiles by maximizing k-mer coverage on de bruijn graph
 
     each tile is a fragment of an observed input ORF
-    ORFs shorter than tile-size are still sampled
-    ORFs shorter than kmer-size are always included in tile set
+    ORFS shorter than tile-size are sampled, but
+    ORFs shorter than kmer-size are ignored
     """
-    import networkx as nx
-    import numpy as np
-    from pepsyn.dbg import (
-        gen_kmers, tiling_stats, orf_stats, seqrecords_to_dbg, setreduce_attr,
-        seq_to_path, path_to_seq, incr_attr)
-
+    # test input/context
+    try:
+        import networkx as nx
+        from pepsyn.dbg import gen_kmers, setreduce_attr, sum_attr
+    except ImportError:
+        raise Abort('greedykmercov requires NetworkX')
+    try:
+        import numpy as np
+    except ImportError:
+        raise Abort('greedykmercov requires NumPy')
     if kmer_cov and num_tiles:
-        print('Set -c/--kmer-cov OR -n/--num-tiles but not both',
-            file=sys.stderr)
-        sys.exit(1)
+        raise UsageError('Set -c/--kmer-cov OR -n/--num-tiles but not both')
     if not kmer_cov and not num_tiles:
-        print('Must set one of -c/--kmer-cov OR -n/--num-tiles',
-            file=sys.stderr)
-        sys.exit(1)
+        raise UsageError('Must set one of -c/--kmer-cov OR -n/--num-tiles')
 
-    # load data and build dbg
-    orfs = {sr.id: sr for sr in SeqIO.parse(input, 'fasta')}
-    with tqdm(desc='building dbg') as pbar:
-        dbg = seqrecords_to_dbg(
-            orfs.values(), kmer_size, skip_short=True, tqdm=pbar)
+    # load orfs
+    orfs = {name: seq for (name, seq, qual) in readfq(input)}
 
-    selected_tiles = set()
+    # load dbg
+    dbg = nx.read_gpickle(dbg_path)
+    kmer_size = len(next(iter(dbg)))
+    if kmer_size > tile_size:
+        raise UsageError('kmer-size > tile_size')
+    kmers_remaining = len(dbg)
+    num_components = nx.number_weakly_connected_components(dbg)
+    if num_tiles:
+        tiles_remaining = num_tiles
 
-    # add ORFs shorter than kmer size to the selected tiles
-    short_orf_names = {}
-    for orf in orfs.values():
-        if len(orf) < kmer_size:
-            tile = str(orf.seq)
-            selected_tiles.add(tile)
-            short_orf_names[tile] = orf.id
+    # load preselected tiles
+    preselected_tiles = [seq for (name, seq, qual) in readfq(preselected_tiles_path)]
+    preselected_kmer_counts = Counter(
+        [kmer for tile in preselected_tiles for kmer in gen_kmers(tile, kmer_size)])
 
     # process each graph component separately
-    num_kmers = len(dbg)
-    num_components = nx.number_weakly_connected_components(dbg)
-    component_iter = nx.weakly_connected_components(dbg)
-    for component in tqdm(component_iter, desc='tile selection', total=num_components):
-        component_cdss = setreduce_attr(dbg, component, 'cds')
+    component_iter = tqdm(nx.weakly_connected_components(dbg), unit='comp',
+                          desc='dbg components', total=num_components)
+    for component in component_iter:
+        component_orfs = setreduce_attr(dbg, component, 'orf')
 
-        # generate all candidate tiles/paths
-        component_paths = []
-        nterm_paths = []
-        cterm_paths = []
-        for cds in tqdm(component_cdss, desc='generating tiles'):
-            orf_path = seq_to_path(str(orfs[cds].seq), kmer_size)
+        # generate all candidate tiles
+        tile_to_name = {}
+        for name in tqdm(component_orfs, desc='generating tiles'):
+            # special case short orfs
+            if len(orfs[name]) < tile_size:
+                tile_to_name.setdefault(orfs[name], []).append((name, 0, len(orfs[name])))
+            for (i, j, tile) in tile_op(orfs[name], tile_size, tile_size - 1):
+                tile_to_name.setdefault(tile, []).append((name, i, j))
+        candidate_tiles = list(tile_to_name.keys())
 
-            if len(orfs[cds]) < tile_size:
-                paths = [orf_path]
-            else:
-                paths = list(sliding_window(tile_size - kmer_size + 1, orf_path))
-
-            nterm_paths.append(paths[0])
-            cterm_paths.append(paths[-1])
-            for path in paths:
-                component_paths.append(path)
-        component_paths = list(set(component_paths))
-        nterm_paths = frozenset(nterm_paths)
-        cterm_paths = frozenset(cterm_paths)
-
+        # generate init tile scores
+        tile_scores = []
+        tile_lens = []
         kmer_to_idxs = {}
-        for i, path in enumerate(tqdm(component_paths, desc='kmer mapping')):
-            for kmer in path:
-                kmer_to_idxs.setdefault(kmer, []).append(i)
+        for idx, tile in enumerate(tqdm(candidate_tiles, desc='init tile scores')):
+            score = 0
+            for kmer in set(gen_kmers(tile, kmer_size)):
+                score += dbg.nodes[kmer]['multiplicity']
+                kmer_to_idxs.setdefault(kmer, set()).add(idx)
+            tile_scores.append(score / len(tile))
+            tile_lens.append(len(tile))
+        tile_scores = np.ma.asarray(tile_scores)
+        tile_scores.harden_mask()
+        tile_lens = np.asarray(tile_lens)
 
-        # initialize path scores
-        path_scores = []
-        for path in tqdm(component_paths, desc='init scores'):
-            if unweighted:
-                score = len(path)
-            else:
-                score = sum(dbg.nodes[kmer]['multiplicity'] for kmer in path)
-            # give a boost to cterm or nterm tiles
-            if path in nterm_paths:
-                score += ceil(tile_size * nterm_boost)
-            if path in cterm_paths:
-                score += ceil(tile_size * cterm_boost)
-            path_scores.append(score)
-        path_scores = np.ma.asarray(path_scores)
-        path_scores.harden_mask()
+        # update tile scores with previously selected tiles
+        for kmer in set(preselected_kmer_counts.keys()) & set(kmer_to_idxs.keys()):
+            idxs = list(kmer_to_idxs[kmer])
+            tile_scores.data[idxs] -= (
+                (preselected_kmer_counts[kmer] * dbg.nodes[kmer]['multiplicity']) / len(tile))
 
         # set number of tiles for this component
         if kmer_cov:
             num_component_tiles = ceil(len(component) * kmer_cov / (tile_size - kmer_size + 1))
         if num_tiles:
-            num_component_tiles = ceil(len(component) / num_kmers * num_tiles)
+            num_component_tiles = ceil(len(component) / kmers_remaining * tiles_remaining)
+            kmers_remaining -= len(component)
+            tiles_remaining -= num_component_tiles
 
         # choose tiles
         for _ in trange(num_component_tiles, desc='choosing tiles'):
-            i = path_scores.argmax()
-            path_scores[i] = np.ma.masked
-            path = component_paths[i]
-            selected_tiles.add(path_to_seq(path))
-            for kmer in path:
-                # update weight (coverage) on graph
-                incr_attr(dbg, kmer, 'weight')
-                # update path scores
-                idxs = list(set(kmer_to_idxs[kmer]))
-                if unweighted:
-                    path_scores.data[idxs] = path_scores.data[idxs] - 1
-                else:
-                    path_scores.data[idxs] = path_scores.data[idxs] - dbg.nodes[kmer]['multiplicity']
-                zeros = path_scores.data < 0
-                path_scores.data[zeros] = 0
+            idx = tile_scores.argmax()
+            tile_scores[idx] = np.ma.masked
+            tile = candidate_tiles[idx]
 
-    for (k, v) in orf_stats(dbg, orfs.values(), tile_size):
-        print(f'{k}\t{v}', file=sys.stderr)
-    for (k, v) in tiling_stats(dbg, selected_tiles):
-        print(f'{k}\t{v}', file=sys.stderr)
+            # write tile
+            name, i, j = tile_to_name[tile][0]
+            nterm = '|NTERM' if dbg.nodes[tile[:kmer_size]].get('start_node', False) else ''
+            cterm = '|CTERM' if dbg.nodes[tile[-kmer_size:]].get('end_node', False) else ''
+            print(f'>{name}|{i}-{j}{nterm}{cterm}\n{tile}', file=output)
 
-    # write out tiles and generate names
-    for i, tile in enumerate(selected_tiles):
-        nterm = ''
-        cterm = ''
-        if len(tile) < kmer_size:
-            cdss = set([short_orf_names[tile]])
-            nterm = '|NTERM'
-            cterm = '|CTERM'
-        else:
-            cdss = setreduce_attr(dbg, gen_kmers(tile, kmer_size), 'cds')
-            if dbg.nodes[tile[:kmer_size]].get('nterm', False):
-                nterm = '|NTERM'
-            if dbg.nodes[tile[-kmer_size:]].get('end_node', False):
-                cterm = '|CTERM'
-        cds = Counter(cdss).most_common(1)[0][0]
-        print(f'>{prefix}{i:05d}|{cds}{nterm}{cterm}\n{tile}', file=output)
+            # update tile scores
+            for kmer in set(gen_kmers(tile, kmer_size)):
+                idxs = list(kmer_to_idxs[kmer])
+                tile_scores.data[idxs] -= dbg.nodes[kmer]['multiplicity'] / tile_lens[idxs]
 
 
 @cli.command()
+@option('-d', '--dbg-path', type=Path(exists=True, dir_okay=False), required=True,
+        help='pickled dbg')
 @option('-p', '--tiles', type=Path(exists=True, dir_okay=False), required=True,
         help='input protein tiles fasta')
 @option('-r', '--orfs', type=Path(exists=True, dir_okay=False), required=True,
         help='input ORFs fasta')
-@option('-k', '--kmer-size', type=int, required=True, help='k-mer size')
-@option('-t', '--tile-size', type=int, required=True, help='tile size')
-def proteintilestats(tiles, orfs, kmer_size, tile_size):
-    """compute some sequence statistics
+@option('-o', '--output', type=File('w'), default=sys.stdout,
+        help='output YAML path (default stdout)')
+def dbgtilesummary(dbg_path, tiles, orfs, output):
+    """compute some sequence statistics"""
+    try:
+        import networkx as nx
+        from pepsyn.dbg import dbg_orf_tile_stats
+    except ImportError:
+        raise Abort('dbgtilesummary requires NetworkX')
 
-    skips tiles shorter than kmer-size
-    """
-    from pepsyn.dbg import (
-        tiling_stats, orf_stats, fasta_to_dbg, sequence_incr_attr)
+    dbg = nx.read_gpickle(dbg_path)
+    with open(orfs, 'r') as ip:
+        orfs = [seq for (name, seq, qual) in readfq(ip)]
+    with open(tiles, 'r') as ip:
+        tiles = [seq for (name, seq, qual) in readfq(ip)]
 
-    with tqdm(desc='building dbg') as pbar:
-        dbg = fasta_to_dbg(orfs, kmer_size, skip_short=True, tqdm=pbar)
-    orfs = list(SeqIO.parse(orfs, 'fasta'))
+    stats = dbg_orf_tile_stats(dbg, orfs, tiles)
 
-    # annotate DBG with tile weights
-    tiles = [str(sr.seq) for sr in SeqIO.parse(tiles, 'fasta')]
-    for tile in tiles:
-        if len(tile) < kmer_size:
-            continue
-        sequence_incr_attr(dbg, tile, kmer_size, 'weight')
-
-    for (k, v) in orf_stats(dbg, orfs, tile_size):
-        print(f'{k}\t{v}', file=sys.stderr)
-    for (k, v) in tiling_stats(dbg, tiles):
-        print(f'{k}\t{v}', file=sys.stderr)
+    print(yaml.dump(stats), file=output)
