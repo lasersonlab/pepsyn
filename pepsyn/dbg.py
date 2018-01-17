@@ -19,7 +19,7 @@ import numpy as np
 import networkx as nx
 from tqdm import tqdm
 
-from pepsyn.util import readfq
+from pepsyn.util import readfq, compute_int_hist
 
 # some utilities for working with graphs
 
@@ -166,11 +166,11 @@ def fasta_file_to_dbg(fasta_file, k, tqdm=None, ignore_short=False):
         return fasta_handle_to_dbg(ip, k, tqdm, ignore_short)
 
 
-def dbg_orf_tile_stats(dbg, orfs, tiles, cov_attr='coverage'):
-    """compute stats of orfs and tile relative to dbg
+def dbg_stats(dbg, orfs, tiles, cov_attr='coverage'):
+    """compute de bruijn graph stats
 
     dbg is a de bruijn graph
-    orfs and tiles are lists of sequences
+    orfs and tiles are lists of seqs (strings)
 
     NOTE: this operation mutates the in-memory dbg by computing coverage of
     each kmer into the cov_attr attribute
@@ -199,18 +199,10 @@ def dbg_orf_tile_stats(dbg, orfs, tiles, cov_attr='coverage'):
 
     stats = {}
     stats['kmer_size'] = kmer_size
-    stats['tile_size'] = tile_size
-    stats['num_orfs'] = len(orfs)
-    stats['num_tiles'] = len(tiles)
-    stats['total_orf_residues'] = orf_lens.sum().tolist()
-    stats['total_tile_residues'] = tile_lens.sum().tolist()
-    stats['avg_orf_coverage'] = tile_lens.sum().tolist() / orf_lens.sum().tolist()
     stats['num_orfs_smaller_than_kmer_size'] = (orf_lens < kmer_size).sum().tolist()
-    stats['num_orfs_smaller_than_tile_size'] = (orf_lens < tile_size).sum().tolist()
     stats['num_observed_kmers'] = len(dbg)
     stats['max_theor_kmers_per_tile'] = tile_size - kmer_size + 1
-    stats['min_theor_tiles_1x_cov'] = ceil(len(dbg) / (tile_size - kmer_size + 1))
-    stats['approx_num_tiles_naive_1x_tiling'] = np.ceil(orf_lens / tile_size).sum().tolist()
+    stats['min_theor_tiles_1x_kmer_cov'] = ceil(len(dbg) / (tile_size - kmer_size + 1))
     stats['num_multiplicity_1_kmers'] = (multiplicities == 1).sum().tolist()
     stats['num_multiplicity_gt1_kmers'] = (multiplicities > 1).sum().tolist()
     stats['avg_kmer_multiplicity'] = multiplicities.mean().tolist()
@@ -227,14 +219,7 @@ def dbg_orf_tile_stats(dbg, orfs, tiles, cov_attr='coverage'):
         multiplicities[coverages > 0].sum() / multiplicities.sum()).tolist()
     stats['nterm_kmer_cov'] = ((coverages[nterms] > 0).sum() / nterms.sum()).tolist()
     stats['cterm_kmer_cov'] = ((coverages[cterms] > 0).sum() / cterms.sum()).tolist()
-    # histograms
-    (hist, bin_edges) = np.histogram(tile_lens, bins=range(max(tile_lens) + 1))
-    stats['tile_lens'] = {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
-    (hist, bin_edges) = np.histogram(orf_lens, bins=range(max(orf_lens) + 1))
-    stats['orf_lens'] = {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
-    (hist, bin_edges) = np.histogram(multiplicities, bins=range(max(multiplicities) + 1))
-    stats['mult_hist'] = {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
-    (hist, bin_edges) = np.histogram(coverages, bins=range(max(coverages) + 1))
-    stats['cov_hist'] = {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
+    stats['mult_hist'] = compute_int_hist(multiplicities)
+    stats['cov_hist'] = compute_int_hist(coverages)
 
     return stats

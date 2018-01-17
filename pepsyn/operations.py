@@ -20,11 +20,12 @@ This module should generally operate on Bio.Seq.Seq objects.
 import re
 from itertools import cycle
 
-
 from Bio.Seq import Seq
-from Bio.Data.IUPACData import protein_letters, ambiguous_dna_values, unambiguous_dna_letters
+from Bio.Data.IUPACData import (
+    protein_letters, ambiguous_dna_values,unambiguous_dna_letters)
+from pygtrie import CharTrie
 
-
+from pepsyn.util import compute_int_hist, compute_float_hist
 from pepsyn.error import PepsynError
 
 ambiguous_protein_values = {
@@ -237,3 +238,76 @@ def recode_site_from_cds(seq, site, codon_sampler, cds_start=None,
     return recode_sites_from_cds(seq, [site], codon_sampler,
                                  cds_start=cds_start, cds_end=cds_end,
                                  search_start=search_start)
+
+
+def orf_stats(orfs):
+    """compute orf stats
+
+    orfs is name->seq dicts
+    """
+    import numpy as np
+    orf_lens = np.asarray([len(o) for o in orfs.values()])
+    ambiguity_factors = [len(list(disambiguate_iupac_aa(s))) for s in orfs.values()]
+
+    stats = {}
+    stats['num_orfs'] = len(orfs)
+    stats['total_orf_residues'] = orf_lens.sum().tolist()
+    stats['orf_lens_hist'] = compute_int_hist(orf_lens)
+    stats['avg_orf_len'] = orf_lens.mean().tolist()
+    stats['max_orf_len'] = orf_lens.max().tolist()
+    stats['min_orf_len'] = orf_lens.min().tolist()
+    stats['num_orfs_internal_stops'] = sum(['*' in s.rstrip('*') for s in orfs.values()])
+    stats['num_orfs_Xs'] = sum(['X' in s.upper() for s in orfs.values()])
+    stats['max_ambig_factor'] = max(ambiguity_factors)
+    stats['ambig_factor_hist'] = compute_int_hist(ambiguity_factors)
+
+    return stats
+
+
+def tile_stats(orfs, tiles):
+    """compute tile stats
+
+    orfs and tiles are name->seq dicts
+
+    NOTE: for prefix trie stats (e.g., num of tiles per orf), it is assumed the
+    orf name is a prefix to the name of a tile from that orf
+    """
+    import numpy as np
+    tile_lens = np.asarray([len(t) for t in tiles.values()])
+    orf_lens = np.asarray([len(o) for o in orfs.values()])
+    tile_size = int(round(np.median(tile_lens)).tolist())
+
+    # compute tile counts for each orf
+    orf_prefixes = CharTrie()
+    for name in orfs:
+        orf_prefixes[name] = True
+    # ensure that no ORF name is a prefix for a different valid ORF
+    for name in orfs:
+        assert len(orf_prefixes.keys(name)) == 1
+    tile_prefixes = CharTrie()
+    for name in tiles:
+        tile_prefixes[name] = True
+    # compute orf coverages
+    orf_coverages = []
+    for (orf, seq) in orfs.items():
+        orf_residues = len(seq)
+        tile_residues = 0.
+        if tile_prefixes.has_subtrie(orf) or (orf in tile_prefixes):
+            for tile in tile_prefixes.keys(orf):
+                tile_residues += len(tiles[tile])
+        orf_coverages.append(tile_residues / orf_residues)
+
+    stats = {}
+    stats['tile_size'] = tile_size
+    stats['num_tiles'] = len(tiles)
+    stats['total_tile_residues'] = tile_lens.sum().tolist()
+    stats['avg_orf_coverage'] = tile_lens.sum().tolist() / orf_lens.sum().tolist()
+    stats['num_orfs_smaller_than_tile_size'] = (orf_lens < tile_size).sum().tolist()
+    stats['approx_num_tiles_naive_1x_tiling'] = np.ceil(orf_lens / tile_size).sum().tolist()
+    stats['avg_orf_coverage'] = sum(orf_coverages) / len(orf_coverages)
+    stats['max_tiles_per_len_normed_orf'] = max(orf_coverages)
+    stats['tile_len_hist'] = compute_int_hist(tile_lens)
+    # what is the tile coverage of each ORF (tot tile residues / orf residues)
+    stats['orf_coverage_hist'] = compute_float_hist(orf_coverages)
+
+    return stats

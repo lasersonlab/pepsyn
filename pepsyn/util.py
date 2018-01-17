@@ -79,3 +79,15 @@ def readfq(fp): # this is a generator function
             if last: # reach EOF before reading enough quality
                 yield name, seq, None # yield a fasta record instead
                 break
+
+
+def compute_int_hist(values):
+    import numpy as np
+    (hist, bin_edges) = np.histogram(values, bins=range(max(values) + 1))
+    return {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
+
+
+def compute_float_hist(values):
+    import numpy as np
+    (hist, bin_edges) = np.histogram(values, bins='auto')
+    return {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}

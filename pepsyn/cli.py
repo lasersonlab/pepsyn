@@ -34,7 +34,8 @@ import yaml
 from pepsyn import __version__
 from pepsyn.operations import (
     reverse_translate, recode_site_from_cds, recode_sites_from_cds, x_to_ggsg,
-    disambiguate_iupac_aa, tile as tile_op, ctermpep as cterm_oligo, pad_ggsg)
+    disambiguate_iupac_aa, tile as tile_op, ctermpep as cterm_oligo, pad_ggsg,
+    tile_stats, orf_stats)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage,
     zero_non_amber_stops, zero_low_freq_codons)
@@ -461,12 +462,13 @@ def greedykmercov(input, output, tile_size, dbg_path, kmer_cov, num_tiles,
 @option('-o', '--output', type=File('w'), default=sys.stdout,
         help='output YAML path (default stdout)')
 def dbgtilesummary(dbg_path, tiles, orfs, output):
-    """compute some sequence statistics"""
+    """compute stats from de bruin graph"""
     try:
         import networkx as nx
-        from pepsyn.dbg import dbg_orf_tile_stats
+        from pepsyn.dbg import dbg_stats
     except ImportError:
-        raise Abort('dbgtilesummary requires NetworkX')
+        print('dbgtilesummary requires NetworkX', file=sys.stderr)
+        raise Abort()
 
     dbg = nx.read_gpickle(dbg_path)
     with open(orfs, 'r') as ip:
@@ -474,6 +476,39 @@ def dbgtilesummary(dbg_path, tiles, orfs, output):
     with open(tiles, 'r') as ip:
         tiles = [seq for (name, seq, qual) in readfq(ip)]
 
-    stats = dbg_orf_tile_stats(dbg, orfs, tiles)
+    stats = dbg_stats(dbg, orfs, tiles)
 
+    print(yaml.dump(stats), file=output)
+
+
+@cli.command()
+@option('-p', '--tiles', type=Path(exists=True, dir_okay=False), required=True,
+        help='input protein tiles fasta')
+@option('-r', '--orfs', type=Path(exists=True, dir_okay=False), required=True,
+        help='input ORFs fasta')
+@option('-o', '--output', type=File('w'), default=sys.stdout,
+        help='output YAML path (default stdout)')
+def tilesummary(tiles, orfs, output):
+    """compute ORF stats
+
+    can be used on raw or cleaned orfs
+    """
+    with open(orfs, 'r') as ip:
+        orfs = {name: seq for (name, seq, qual) in readfq(ip)}
+    with open(tiles, 'r') as ip:
+        tiles = {name: seq for (name, seq, qual) in readfq(ip)}
+    stats = tile_stats(orfs, tiles)
+    print(yaml.dump(stats), file=output)
+
+
+@cli.command()
+@argument_input
+@argument_output
+def orfsummary(input, output):
+    """compute ORF stats
+
+    can be used on raw or cleaned orfs
+    """
+    orfs = {name: seq for (name, seq, qual) in readfq(input)}
+    stats = orf_stats(orfs)
     print(yaml.dump(stats), file=output)
