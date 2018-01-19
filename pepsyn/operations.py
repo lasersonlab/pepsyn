@@ -173,6 +173,31 @@ def disambiguate_iupac_aa(seq):
         yield s
 
 
+def num_disambiguated_iupac_strings(seq, ambiguous_letters, disambiguation):
+    """
+    seq is Bio.Seq.Seq or str
+
+    ambiguous_letters is string containing ambiguous IUPAC codes
+
+    disambiguation is dict with key from ambiguous_letters and values the
+    strings containing the unambiguous versions (e.g.,
+    Bio.Data.IUPACData.ambiguous_dna_values)
+    """
+    n = 1
+    for letter in str(seq):
+        if letter in ambiguous_letters:
+            n *= len(disambiguation[letter])
+    return n
+
+
+def num_disambiguated_iupac_dna(seq):
+    return num_disambiguated_iupac_strings(seq, extended_dna_letters, ambiguous_dna_values)
+
+
+def num_disambiguated_iupac_aa(seq):
+    return num_disambiguated_iupac_strings(seq, extended_protein_letters, ambiguous_protein_values)
+
+
 def recode(seq, codon_sampler):
     """
     seq is a Bio.Seq.Seq
@@ -247,8 +272,7 @@ def orf_stats(orfs):
     """
     import numpy as np
     orf_lens = np.asarray([len(o) for o in orfs.values()])
-    ambiguity_factors = [len(list(disambiguate_iupac_aa(s))) for s in orfs.values()]
-
+    ambiguity_factors = {n: num_disambiguated_iupac_aa(s) for (n, s) in orfs.items()}
     stats = {}
     stats['num_orfs'] = len(orfs)
     stats['total_orf_residues'] = orf_lens.sum().tolist()
@@ -258,8 +282,9 @@ def orf_stats(orfs):
     stats['min_orf_len'] = orf_lens.min().tolist()
     stats['num_orfs_internal_stops'] = sum(['*' in s.rstrip('*') for s in orfs.values()])
     stats['num_orfs_Xs'] = sum(['X' in s.upper() for s in orfs.values()])
-    stats['max_ambig_factor'] = max(ambiguity_factors)
-    stats['ambig_factor_hist'] = compute_int_hist(ambiguity_factors)
+    stats['max_ambig_factor'] = max(ambiguity_factors.values())
+    stats['ambig_factor_hist'] = compute_int_hist(list(ambiguity_factors.values()))
+    stats['top_5_ambig'] = list(map(list, sorted(ambiguity_factors.items(), key=lambda tup: tup[1], reverse=True)[:5]))
 
     return stats
 
@@ -288,14 +313,14 @@ def tile_stats(orfs, tiles):
     for name in tiles:
         tile_prefixes[name] = True
     # compute orf coverages
-    orf_coverages = []
+    orf_coverages = {}
     for (orf, seq) in orfs.items():
         orf_residues = len(seq)
         tile_residues = 0.
         if tile_prefixes.has_subtrie(orf) or (orf in tile_prefixes):
             for tile in tile_prefixes.keys(orf):
                 tile_residues += len(tiles[tile])
-        orf_coverages.append(tile_residues / orf_residues)
+        orf_coverages[orf] = tile_residues / orf_residues
 
     stats = {}
     stats['tile_size'] = tile_size
@@ -304,10 +329,13 @@ def tile_stats(orfs, tiles):
     stats['avg_orf_coverage'] = tile_lens.sum().tolist() / orf_lens.sum().tolist()
     stats['num_orfs_smaller_than_tile_size'] = (orf_lens < tile_size).sum().tolist()
     stats['approx_num_tiles_naive_1x_tiling'] = np.ceil(orf_lens / tile_size).sum().tolist()
-    stats['avg_orf_coverage'] = sum(orf_coverages) / len(orf_coverages)
-    stats['max_tiles_per_len_normed_orf'] = max(orf_coverages)
+    stats['avg_orf_coverage'] = sum(orf_coverages.values()) / len(orf_coverages)
+    stats['max_tiles_per_len_normed_orf'] = max(orf_coverages.values())
     stats['tile_len_hist'] = compute_int_hist(tile_lens)
     # what is the tile coverage of each ORF (tot tile residues / orf residues)
-    stats['orf_coverage_hist'] = compute_float_hist(orf_coverages)
+    # tiles are assigned to ORFs if they share a name
+    stats['orf_coverage_hist'] = compute_float_hist(list(orf_coverages.values()))
+    stats['top_5_orf_cov'] = list(map(list, sorted(orf_coverages.items(), key=lambda tup: tup[1], reverse=True)[:5]))
+    stats['bot_5_orf_cov'] = list(map(list, sorted(orf_coverages.items(), key=lambda tup: tup[1])[:5]))
 
     return stats
