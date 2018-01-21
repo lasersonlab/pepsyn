@@ -15,7 +15,7 @@
 import os
 import sys
 from os.path import join as pjoin
-from math import ceil, inf
+from math import ceil, inf, floor, log10
 from collections import Counter
 from logging import captureWarnings
 
@@ -35,7 +35,7 @@ from pepsyn import __version__
 from pepsyn.operations import (
     reverse_translate, recode_site_from_cds, recode_sites_from_cds, x_to_ggsg,
     disambiguate_iupac_aa, tile as tile_op, ctermpep as cterm_oligo, pad_ggsg,
-    tile_stats, orf_stats)
+    tile_stats, orf_stats, num_disambiguated_iupac_aa)
 from pepsyn.codons import (
     FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage,
     zero_non_amber_stops, zero_low_freq_codons)
@@ -282,16 +282,14 @@ def disambiguateaa(input, output):
     B => DN, X => ACDEFGHIKLMNPQRSTVWY, Z => EQ, J => LI,
     U => C (selenocysteine), O => K (pyrrolysine)
     """
-    for seqrecord in SeqIO.parse(input, 'fasta'):
-        id_ = seqrecord.id
-        ambig = seqrecord.seq
+    for (name, ambig, qual) in readfq(input):
+        n = num_disambiguated_iupac_aa(ambig)
+        digits = floor(log10(n)) + 1
+        fmt = f'{name}|disambig_{{:0{digits}d}}'
         for (i, unambig) in enumerate(disambiguate_iupac_aa(ambig)):
-            if unambig != ambig:
-                output_title = '{}|disambig_{}'.format(id_, i + 1)
-            else:
-                output_title = id_
-            output_record = SeqRecord(unambig, output_title, description='')
-            print_fasta(output_record, output)
+            if n > 1:
+                name = fmt.format(i + 1)
+            print(f'>{name}\n{unambig}', file=output)
 
 
 @cli.command()
