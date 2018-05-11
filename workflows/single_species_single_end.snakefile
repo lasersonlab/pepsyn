@@ -3,6 +3,16 @@ from glob import glob
 from llutil.utils import fastx_stem
 
 
+config['input_glob'] =
+config['insert_length'] =
+config['insert_stddev'] =
+config['vector_kallisto_index'] =
+config['species_index'] =
+config['species_gff'] =
+config['species_fasta'] =
+config['read_length'] =
+
+
 input_files = glob(config['input_glob'])
 config['samples'] = {fastx_stem(f): f for f in input_files}
 
