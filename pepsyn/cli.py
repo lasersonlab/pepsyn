@@ -307,7 +307,7 @@ def findsite(input, site, clip_left, clip_right):
         end = len(seq) - clip_right
         idx = seq[start:end].find(query)
         if idx >= 0:
-            print(f'{name}|{site}|{idx + start}', file=output)
+            print(f'{name}|{site}|{idx + start}', file=sys.stdout)
 
 
 @cli.command()
