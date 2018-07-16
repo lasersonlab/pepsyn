@@ -187,7 +187,24 @@ def clip(input, output, left, right):
 @cli.command()
 @argument_input
 @argument_output
-@option('--codon-table', '-t', default='standard',
+@option('--codon-table', '-t', default='Standard',
+        help='ONLY STANDARD TABLE IMPLEMENTED')
+@option('--truncate-at-stop', '-x', is_flag=True,
+        help='Truncate translation at first stop codon')
+def translate(input, output, codon_table, truncate_at_stop):
+    """translate nucleotide sequences into protein"""
+    for seqrecord in tqdm(SeqIO.parse(input, 'fasta'), desc='translate', unit='seq'):
+        aa_id = seqrecord.id
+        aa_seq = seqrecord.seq.translate(table=codon_table)
+        if truncate_at_stop:
+            aa_seq = aa_seq.split('*')[0]
+        print_fasta(SeqRecord(aa_seq, aa_id, description=''), output)
+
+
+@cli.command()
+@argument_input
+@argument_output
+@option('--codon-table', '-t', default='Standard',
         help='ONLY STANDARD TABLE IMPLEMENTED')
 @option('--codon-usage', '-u', default='ecoli', help='ONLY ECOLI IMPLEMENTED')
 @option('--sampler', default='weighted', show_default=True,
@@ -224,7 +241,7 @@ def revtrans(input, output, codon_table, codon_usage, sampler,
         help='Number of bases to clip from start of sequence to get to CDS')
 @option('--clip-right', type=int, default=0,
         help='Number of bases to clip from end of sequence to get to CDS')
-@option('--codon-table', '-t', default='standard',
+@option('--codon-table', '-t', default='Standard',
         help='ONLY STANDARD TABLE IMPLEMENTED')
 @option('--codon-usage', '-u', default='ecoli', help='ONLY ECOLI IMPLEMENTED')
 @option('--sampler', default='weighted', show_default=True,
