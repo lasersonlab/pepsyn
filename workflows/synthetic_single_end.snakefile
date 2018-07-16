@@ -2,7 +2,27 @@ from glob import glob
 
 from tqdm import tqdm
 
-from llutil.utils import fastx_stem
+
+def fastx_stem(path):
+    m = re.match('(.+)(?:\.fast[aq]|\.fna|\.f[aq])(?:\.gz)?$', osp.basename(path))
+    if m is None:
+        raise ValueError(
+            'Path {} does not look like a fast[aq] file'.format(path))
+    return m.group(1)
+
+
+def parse_illumina_fastq_name(path):
+    """Parse Illumina fastq file name"""
+    stem = fastx_stem(path)
+    m = re.match('(.*)_S(\d+)_L(\d+)_([RI][12])_001', stem)
+    IlluminaFastq = namedtuple(
+        'IlluminaFastq', ['sample', 'sample_num', 'lane', 'read', 'path'])
+    return IlluminaFastq(sample=m.group(1),
+                         sample_num=int(m.group(2)),
+                         lane=int(m.group(3)),
+                         read=m.group(4),
+                         path=path)
+
 
 
 # CONFIGURE
@@ -19,37 +39,60 @@ rule all:
     input:
         expand('{sample}.bam', sample=config['samples']),
         expand('{sample}.counts.tsv', sample=config['samples']),
+        expand('{sample}.exact_matches.tsv', sample=config['samples']),
         expand('{sample}.summary.yaml', sample=config['samples']),
         expand('{sample}.report.html', sample=config['samples']),
 
 
 rule align_ref:
     input:
-        fastq = lambda wildcards: config['samples'][wildcards.sample]
+        lambda wildcards: config['samples'][wildcards.sample]
     output:
         '{sample}.bam',
     params:
         reference_index = config['reference_index']
-    threads: 4
+    threads: 1
     shell:
         """
-        bowtie2 -p {threads} -x {params.reference_index} -U {input} \
-                   | samtools sort -O BAM -o {output}
+        cat {input} \
+            | gunzip \
+            | bowtie2 -p {threads} --norc -x {params.reference_index} -U - \
+            | samtools sort -O BAM -o {output}
         """
 
-rule compute_counts:
+rule compute_alignment_counts:
     input:
         '{sample}.bam'
     output:
-        '{sample}.counts.tsv'
+        '{sample}.alignment_counts.tsv'
     shell:
         """
-        echo "id\tcount" > {output}
-        samtools depth -aa -m 1000000 {input} \
+        echo "id\t{wildcards.sample}" > {output}
+        samtools depth -aa -m 10000000 {input} \
             | tqdm \
             | awk 'BEGIN {{OFS="\t"}} {{counts[$1] = ($3 < counts[$1]) ? counts[$1] : $3}} END {{for (c in counts) {{print c, counts[c]}}}}' \
+            | sort -k 1 \
             >> {output}
         """
+
+
+rule compute_match_counts:
+    input:
+        '{sample}.bam'
+    output:
+        '{sample}.match_counts.tsv'
+    run:
+        from collections import Counter
+        from pysam import AlignmentFile
+        counts = Counter()
+        bamfile = AlignmentFile(input[0], 'rb')
+        for aln in tqdm(bamfile, position=1):
+            if aln.flag == 0 and len(aln.cigar) == 1 and aln.cigar[0] == (0, aln.query_length):
+                counts[aln.reference_name] += 1
+        with open(output[0], 'w') as op:
+            print('id\t{}'.format(wildcards.sample), file=op)
+            for n in bamfile.header.references:
+                print('{}\t{}'.format(n, counts[n]), file=op)
 
 
 rule compute_snps:
@@ -119,7 +162,7 @@ rule compute_summary:
 rule generate_report:
     input:
         stats = '{sample}.summary.yaml',
-        counts = '{sample}.counts.tsv',
+        counts = '{sample}.exact_matches.tsv',
     output:
         '{sample}.report.html'
     run:
@@ -143,7 +186,7 @@ rule generate_report:
         counts = pd.read_csv(input.counts, sep='\t', header=0)
 
         s['num_clones'] = len(counts)
-        s['average_coverage'] = s['num_reads'] / s['num_clones']
+        s['average_coverage'] = s['num_reads_aligned_perfect'] / s['num_clones']
 
         x0, x1, y0, y1 = list(range(len(counts))), list(range(len(counts))), 0, sorted(counts['count'])
         p1 = figure(plot_height=400, plot_width=400, title='clone sizes', x_axis_label='clones', y_axis_label='read count')
@@ -201,9 +244,9 @@ rule generate_report:
                     <table>
                         <tr><td>Read length</td><td>{read_length}</td></tr>
                         <tr><td>Number of reads</td><td>{num_reads:,}</td></tr>
-                        <tr><td>Average coverage (reads per clone)</td><td>{average_coverage:.1f}×</td></tr>
                         <tr><td>Number of reads aligned</td><td>{num_reads_aligned:,d}</td></tr>
                         <tr><td>Number of reads aligned perfectly</td><td>{num_reads_aligned_perfect:,d}</td></tr>
+                        <tr><td>Avg coverage (perfect alignments per clone)</td><td>{average_coverage:.1f}×</td></tr>
                         <tr><td>Number of clones (designed)</td><td>{num_clones:,d}</td></tr>
                         <tr><td>Number of clones with alignment</td><td>{num_clones_with_alignment:,d}</td></tr>
                         <tr><td>Number of clones with perfect alignment</td><td>{num_clones_with_alignment_perfect:,d}</td></tr>

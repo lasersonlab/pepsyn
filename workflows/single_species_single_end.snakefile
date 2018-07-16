@@ -5,8 +5,6 @@ from llutil.utils import fastx_stem
 
 config['input_glob'] =
 config['insert_length'] =
-config['insert_stddev'] =
-config['vector_kallisto_index'] =
 config['species_index'] =
 config['species_gff'] =
 config['species_fasta'] =
@@ -14,70 +12,37 @@ config['read_length'] =
 
 
 input_files = glob(config['input_glob'])
-config['samples'] = {fastx_stem(f): f for f in input_files}
 
 
 rule all:
     input:
-        expand('species_aligned/{sample}.bam', sample=config['samples']),
-        expand('annot/{sample}.annot_inserts.tsv', sample=config['samples']),
-        expand('coverage/{sample}.cov_stranded.tsv', sample=config['samples']),
-        expand('coverage/{sample}.cov_unstranded.tsv', sample=config['samples']),
-        expand('coverage/{sample}.cov_inframe.tsv', sample=config['samples']),
-        expand('coverage/{sample}.cov_genome.tsv', sample=config['samples']),
-        expand('clustered_reads/{sample}.clustered.counts.tsv', sample=config['samples']),
-        expand('annot/{sample}.inframe_inserts.counts.tsv', sample=config['samples']),
-        expand('ref/{sample}.uniq_frag.bed', sample=config['samples']),
+        'genome_aligned_reads.unsorted.bam',
+        'fragments.tsv',
+        'coverage/genome.weighted.tsv',
+        'coverage/genome.dedup.tsv',
+        'coverage/unstranded.weighted.tsv',
+        'coverage/unstranded.dedup.tsv',
+        'coverage/stranded.weighted.tsv',
+        'coverage/stranded.dedup.tsv',
+        'coverage/inframe.weighted.tsv',
+        'coverage/inframe.dedup.tsv',
+        # 'clusters.counts.tsv',
+        # 'annot/{sample}.inframe_inserts.counts.tsv', sample=config['samples']),
+        # 'ref/{sample}.uniq_frag.bed', sample=config['samples']),
         # expand('diversity/{sample}.recon_allreads.txt', sample=config['samples']),
         # expand('diversity/{sample}.recon_inframe.txt', sample=config['samples'])
 
 
-rule deplete_vector:
-    input:
-        fastq = lambda wildcards: config['samples'][wildcards.sample]
-    output:
-        fastq = 'vector_depleted/{sample}.fastq',
-        tmpdir = temp('tmp_{sample}')
-    params:
-        insert_length = config['insert_length'],
-        insert_stddev = config['insert_stddev'],
-        vector_index = config['vector_kallisto_index']
-    shell:
-        """
-        echo REENABLE MULTITHREADED KALLISTO
-        echo REENABLE MULTITHREADED KALLISTO
-        echo REENABLE MULTITHREADED KALLISTO
-        echo REENABLE MULTITHREADED KALLISTO
-        echo REENABLE MULTITHREADED KALLISTO
-
-        kallisto pseudo --single --pseudobam -t 1 -l {params.insert_length} -s {params.insert_stddev} -o {output.tmpdir} -i {params.vector_index} {input} \
-            | samtools fastq -f 4 - \
-            > {output.fastq}
-        """
+# GENERATE REFERENCE DATA
 
 
-rule align_species:
-    input:
-        'vector_depleted/{sample}.fastq'
-    output:
-        'species_aligned/{sample}.bam'
-    params:
-        species_index = config['species_index']
-    threads: 4
-    shell:
-        """
-        bowtie2 -p {threads} -x {params.species_index} -U {input} \
-                   | samtools sort -@ {threads} -O BAM -o {output}
-        """
-
-
-rule gene_filter_gff:
+rule cds_filter_gff:
     input:
         config['species_gff']
     output:
-        temp('genes.gff')
+        temp('cdss.gff')
     shell:
-        r"""cat {input} | awk -F \t '/^[^#]/ && $3 == "gene"' > {output}"""
+        r"""cat {input} | awk -F \t '/^[^#]/ && $3 == "CDS"' > {output}"""
 
 
 rule contig_lengths:
@@ -93,86 +58,212 @@ rule contig_lengths:
         """
 
 
-rule generate_inserts:
+# COMPUTE ALIGNMENTS AND ANNOTATED FRAGMENT COUNTS
+
+
+rule align_reads_to_genome:
     input:
-        reads = 'species_aligned/{sample}.bam',
-        genome = 'chrom_sizes.tsv'
+        fastq = input_files
     output:
-        temp('{sample}.inserts.bed')
+        'genome_aligned_reads.unsorted.bam'
     params:
-        extend = config['insert_length'] - config['read_length']
+        species_index = config['species_index']
+    threads: 4
     shell:
         """
-        bedtools bamtobed -cigar -i {input.reads} \
-            | bedtools slop -i stdin -s -g {input.genome} -l 0 -r {params.extend} \
-            > {output}
-        """
-
-
-rule annotate_inserts_with_genes:
-    input:
-        inserts = rules.generate_inserts.output,
-        genes = 'genes.gff'
-    output:
-        'annot/{sample}.annot_inserts.tsv'
-    shell:
-        'bedtools intersect -s -a {input.inserts} -b {input.genes} -wao > {output}'
-
-
-rule filter_inframe_inserts:
-    input:
-        'annot/{sample}.annot_inserts.tsv'
-    output:
-        'annot/{sample}.inframe_inserts.tsv'
-    shell:
-        """
-        # first awk script filters reads that overlap something
-        # second awk script filters in-frame
         cat {input} \
-            | awk '$11 >= 0' \
-            | awk '($6 == "+" && ($2 - $11 + 1) % 3 == 0) || ($6 == "-" && ($3 - $12) % 3 == 0)' \
+            | bowtie2 -p {threads} -x {params.species_index} -U - \
+            | samtools view -b - \
             > {output}
         """
 
 
-rule stranded_gene_coverage:
+rule generate_fragments:
     input:
-        inserts = rules.generate_inserts.output,
-        genes = 'genes.gff'
+        alignments = 'genome_aligned_reads.unsorted.bam',
+        genome = 'chrom_sizes.tsv',
+        cds_annot = 'cdss.gff'
     output:
-        'coverage/{sample}.cov_stranded.tsv'
+        temp('raw_fragments.tsv')
+    params:
+        size = config['insert_length']
     shell:
-        'bedtools coverage -s -a {input.genes} -b {input.inserts} -wao > {output}'
+        r"""
+        echo 'UNDO $3 != 0 when bedtools2#646 is fixed'
+        echo -e 'chr\tfrag_start\tfrag_end\tstrand\tcds_start\tcds_end\tcount\tannot' > {output}
+        bedtools bamtobed -i {input.alignments} \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{print $1, ($6 == "+") ? $2 : $3, $6}}' \
+            | sort \
+            | uniq -c \
+            | awk 'BEGIN {{OFS="\t"}} $3 != 0 {{print $2, $3, $3, ".", $1, $4}}' \
+            | bedtools slop -s -l 0 -r {params.size} -i stdin -g {input.genome} \
+            | bedtools intersect -s -wao -a stdin -b {input.cds_annot} \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{print $1, $2, $3, $6, $10, $11, $5, $15}}' \
+            >> {output}
+        """
 
 
-rule unstranded_gene_coverage:
+rule annotate_fragments:
     input:
-        inserts = rules.generate_inserts.output,
-        genes = 'genes.gff'
+        'raw_fragments.tsv',
+        config['species_fasta']
     output:
-        'coverage/{sample}.cov_unstranded.tsv'
-    shell:
-        'bedtools coverage -a {input.genes} -b {input.inserts} -wao > {output}'
+        'fragments.tsv'
+    run:
+        from csv import DictReader
+        from collections import Counter
+
+        from tqdm import tqdm
+        from Bio import SeqIO
+
+        chrom_dict = SeqIO.to_dict(SeqIO.parse(input[1], 'fasta'))
+
+        fieldnames = ['chr', 'frag_start', 'frag_end', 'strand', 'cds_start', 'cds_end', 'count', 'annot']
+        annots = dict()
+        with open(input[0], 'r') as ip, open(output[0], 'w') as op:
+            _ = next(ip)  # skip input header
+            # write output header
+            print('chr\tposition\tstrand\tcount\thas_overlap\thas_inframe_overlap\tbases_till_overlap\tfragment_nt\tfragment_aa\tannot', file=op)
+            for r in tqdm(DictReader(ip, fieldnames=fieldnames, delimiter='\t', dialect='unix')):
+                if r['strand'] not in ['+', '-']:
+                    raise ValueError('strand must be + or -')
+
+                cds_start = int(r['cds_start'])
+                cds_end = int(r['cds_end'])
+                frag_start = int(r['frag_start'])
+                frag_end = int(r['frag_end'])
+
+                # is the fragment on the positive strand of the chr?
+                is_positive_strand = int(r['strand'] == '+')
+                # does the fragment overlap any features in the bed file?
+                # note: this value comes from bedtools, which uses -1 for no
+                # overlap
+                has_overlap = int(cds_start >= 0)
+                # the python-style index where the fragment starts
+                position = frag_start if is_positive_strand else frag_end
+
+                # compute base differential between fragment and CDS
+                if is_positive_strand:
+                    # off-by-one bc 'position' derives from a BED file and
+                    # 'cds_start' derives from a GFF file
+                    diff = position - cds_start + 1
+                else:
+                    diff = cds_end - position
+
+                # extract nt and aa sequences
+                fragment_nt = chrom_dict[r['chr']][frag_start:frag_end].seq
+                if not is_positive_strand:
+                    fragment_nt = fragment_nt.reverse_complement()
+                frame = len(fragment_nt) % 3
+                fragment_aa = fragment_nt[:len(fragment_nt) - frame].translate().split('*')[0]
+
+                # how many bases from the 5' end of the fragment till we
+                # get to the overlap
+                bases_till_overlap = max(-diff, 0) if has_overlap else ''
+                correct_frame = diff % 3 == 0
+                translation_reaches_overlap = (len(fragment_aa) * 3 > bases_till_overlap) if has_overlap else False
+                has_inframe_overlap = int(has_overlap and correct_frame and translation_reaches_overlap)
+
+                record = (
+                    r['chr'], position, r['strand'], r['count'], has_overlap,
+                    has_inframe_overlap, bases_till_overlap, fragment_nt,
+                    fragment_aa, r['annot'])
+                record_string = '\t'.join(map(str, record))
+                print(record_string, file=op)
+
+
+# COMPUTE COVERAGE
 
 
 rule genome_coverage:
     input:
-        inserts = rules.generate_inserts.output,
+        fragments = 'raw_fragments.tsv',
         genome = 'chrom_sizes.tsv'
     output:
-        'coverage/{sample}.cov_genome.tsv'
+        weighted = 'coverage/genome.weighted.tsv',
+        dedup = 'coverage/genome.dedup.tsv'
     shell:
-        'bedtools genomecov -d -g {input.genome} -i {input.inserts} > {output}'
+        """
+        tail -n +2 {input.fragments} \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{for (i=0; i < $7; i++) print $1, $2, $3, ".", ".", $4}}' \
+            | bedtools genomecov -d -g {input.genome} -i stdin \
+            > {output.weighted}
+        tail -n +2 {input.fragments} \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{print $1, $2, $3, ".", ".", $4}}' \
+            | bedtools genomecov -d -g {input.genome} -i stdin \
+            > {output.dedup}
+        """
 
 
-rule inframe_gene_coverage:
+rule unstranded_cds_coverage:
     input:
-        inserts = 'annot/{sample}.inframe_inserts.tsv',
-        genes = 'genes.gff'
+        fragments = 'raw_fragments.tsv',
+        cdss = 'cdss.gff'
     output:
-        'coverage/{sample}.cov_inframe.tsv'
+        weighted = 'coverage/unstranded.weighted.tsv',
+        dedup = 'coverage/unstranded.dedup.tsv'
     shell:
-        'bedtools coverage -s -a {input.genes} -b {input.inserts} -wao > {output}'
+        """
+        tail -n +2 {input.fragments} \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{for (i=0; i < $7; i++) print $1, $2, $3, ".", ".", $4}}' \
+            | bedtools coverage -a {input.cdss} -b stdin -wao \
+            > {output.weighted}
+        tail -n +2 {input.fragments} \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{print $1, $2, $3, ".", ".", $4}}' \
+            | bedtools coverage -a {input.cdss} -b stdin -wao \
+            > {output.dedup}
+        """
+
+
+rule stranded_cds_coverage:
+    input:
+        fragments = 'raw_fragments.tsv',
+        cdss = 'cdss.gff'
+    output:
+        weighted = 'coverage/stranded.weighted.tsv',
+        dedup = 'coverage/stranded.dedup.tsv'
+    shell:
+        """
+        tail -n +2 {input.fragments} \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{for (i=0; i < $7; i++) print $1, $2, $3, ".", ".", $4}}' \
+            | bedtools coverage -s -a {input.cdss} -b stdin -wao \
+            > {output.weighted}
+        tail -n +2 {input.fragments} \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{print $1, $2, $3, ".", ".", $4}}' \
+            | bedtools coverage -s -a {input.cdss} -b stdin -wao \
+            > {output.dedup}
+        """
+
+
+rule inframe_cds_coverage:
+    input:
+        fragments = 'raw_fragments.tsv',
+        cdss = 'cdss.gff'
+    output:
+        weighted = 'coverage/inframe.weighted.tsv',
+        dedup = 'coverage/inframe.dedup.tsv'
+    shell:
+        """
+        tail -n +2 {input.fragments} \
+            | awk '$5 >= 0' \
+            | awk '($4 == "+" && ($2 - $5 + 1) % 3 == 0) || ($4 == "-" && ($6 - $3) % 3 == 0)' \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{for (i=0; i < $7; i++) print $1, $2, $3, ".", ".", $4}}' \
+            | bedtools coverage -s -a {input.cdss} -b stdin -wao \
+            > {output.weighted}
+        tail -n +2 {input.fragments} \
+            | awk '$5 >= 0' \
+            | awk '($4 == "+" && ($2 - $5 + 1) % 3 == 0) || ($4 == "-" && ($6 - $3) % 3 == 0)' \
+            | awk -F '\t' 'BEGIN {{OFS="\t"}} {{print $1, $2, $3, ".", ".", $4}}' \
+            | bedtools coverage -s -a {input.cdss} -b stdin -wao \
+            > {output.dedup}
+        """
+
+
+
+
+
+
+
 
 
 
@@ -194,20 +285,20 @@ rule clustered_read_counts:
         """
 
 
-rule recon_diversity_allreads:
-    input:
-        'clustered_reads/{sample}.clustered.counts.tsv'
-    output:
-        temp('diversity/tmp_{sample}.recon_input.tsv'),
-        'diversity/{sample}.recon_allreads.txt'
-    params:
-        python2 = config['python2'],
-        recon = config['recon']
-    shell:
-        r"""
-        cat {input} | awk '{{print $2 "\t" $1}}' > {output[0]}
-        {params.python2} {params.recon} -R -t 1000 -o {output[1]} {output[0]}
-        """
+# rule recon_diversity_allreads:
+#     input:
+#         'clustered_reads/{sample}.clustered.counts.tsv'
+#     output:
+#         temp('diversity/tmp_{sample}.recon_input.tsv'),
+#         'diversity/{sample}.recon_allreads.txt'
+#     params:
+#         python2 = config['python2'],
+#         recon = config['recon']
+#     shell:
+#         r"""
+#         cat {input} | awk '{{print $2 "\t" $1}}' > {output[0]}
+#         {params.python2} {params.recon} -R -t 1000 -o {output[1]} {output[0]}
+#         """
 
 
 rule inframe_insert_counts:
@@ -228,22 +319,22 @@ rule inframe_insert_counts:
         """
 
 
-rule recon_diversity_inframe:
-    input:
-        'annot/{sample}.inframe_inserts.counts.tsv'
-    output:
-        'diversity/{sample}.recon_inframe.txt'
-    params:
-        python2 = config['python2'],
-        recon = config['recon']
-    shell:
-        r"""
-        {params.python2} {params.recon} -R -t 1000 -o {output} {input}
-        """
+# rule recon_diversity_inframe:
+#     input:
+#         'annot/{sample}.inframe_inserts.counts.tsv'
+#     output:
+#         'diversity/{sample}.recon_inframe.txt'
+#     params:
+#         python2 = config['python2'],
+#         recon = config['recon']
+#     shell:
+#         r"""
+#         {params.python2} {params.recon} -R -t 1000 -o {output} {input}
+#         """
 
 rule gen_align_ref:
     input:
-        'annot/{sample}.annot_inserts.tsv'
+        '{sample}.annot_inserts.tsv'
     output:
         'ref/{sample}.uniq_frag.bed'
     shell:
