@@ -15,21 +15,23 @@
 from setuptools import setup, find_packages
 import versioneer
 
+
 def readme():
-    with open('README.md', 'r') as ip:
+    with open("README.md", "r") as ip:
         return ip.read()
 
+
 setup(
-    name='pepsyn',
+    name="pepsyn",
     version=versioneer.get_version(),
     cmdclass=versioneer.get_cmdclass(),
-    description='Peptide library design',
+    description="Peptide library design",
     long_description=readme(),
-    url='https://github.com/lasersonlab/pepsyn',
-    author='Laserson Lab',
-    license='Apache License, Version 2.0',
-    classifiers=['Programming Language :: Python :: 3'],
+    url="https://github.com/lasersonlab/pepsyn",
+    author="Laserson Lab",
+    license="Apache License, Version 2.0",
+    classifiers=["Programming Language :: Python :: 3"],
     packages=find_packages(),
-    install_requires=['click', 'tqdm', 'biopython', 'pyyaml'],
-    entry_points={'console_scripts': ['pepsyn = pepsyn.cli:cli']}
+    install_requires=["click", "tqdm", "biopython", "pyyaml"],
+    entry_points={"console_scripts": ["pepsyn = pepsyn.cli:cli"]},
 )

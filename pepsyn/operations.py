@@ -22,23 +22,26 @@ from itertools import cycle
 
 from Bio.Seq import Seq
 from Bio.Data.IUPACData import (
-    protein_letters, ambiguous_dna_values,unambiguous_dna_letters)
+    protein_letters,
+    ambiguous_dna_values,
+    unambiguous_dna_letters,
+)
 from pygtrie import CharTrie
 
 from pepsyn.util import compute_int_hist, compute_float_hist
 from pepsyn.error import PepsynError
 
 ambiguous_protein_values = {
-    'B': 'DN',
-    'X': protein_letters,
-    'Z': 'EQ',
-    'J': 'LI',
-    'U': 'C',  # selenocysteine
-    'O': 'K',  # pyrrolysine
+    "B": "DN",
+    "X": protein_letters,
+    "Z": "EQ",
+    "J": "LI",
+    "U": "C",  # selenocysteine
+    "O": "K",  # pyrrolysine
 }
-extended_protein_letters = ''.join(ambiguous_protein_values.keys())
-extended_dna_letters = (
-    set(ambiguous_dna_values.keys()) - set(unambiguous_dna_letters))
+extended_protein_letters = "".join(ambiguous_protein_values.keys())
+extended_dna_letters = set(ambiguous_dna_values.keys()) - set(unambiguous_dna_letters)
+
 
 def tile(seq, length, overlap):
     """Generator of tiles with specified length across a sequence
@@ -51,11 +54,11 @@ def tile(seq, length, overlap):
     length, overlap are int
     """
     if length <= 0:
-        raise ValueError('length must be a positive integer')
+        raise ValueError("length must be a positive integer")
     if overlap < 0:
-        raise ValueError('overlap must be a nonnegative integer')
+        raise ValueError("overlap must be a nonnegative integer")
     if overlap >= length:
-        raise ValueError('length must be greater than overlap')
+        raise ValueError("length must be greater than overlap")
     seqlen = len(seq)
     end = length
     while end < seqlen:
@@ -78,7 +81,7 @@ def ctermpep(seq, length, add_stop=False):
     seq is a Bio.Seq.Seq
     """
     if add_stop:
-        seq += '*'
+        seq += "*"
     return seq[-length:]
 
 
@@ -90,12 +93,12 @@ def reverse_translate(seq, codon_sampler):
     codons = []
     for aa in seq:
         codons.append(codon_sampler.sample_codon(aa))
-    return sum(codons, Seq('', codon_sampler.nucleotide_alphabet))
+    return sum(codons, Seq("", codon_sampler.nucleotide_alphabet))
 
 
 def _ggsg_generator():
     """generates infinite sequence of 'G', 'G', 'S', 'G'"""
-    for aa in cycle('GGSG'):
+    for aa in cycle("GGSG"):
         yield aa
 
 
@@ -104,21 +107,21 @@ def x_to_ggsg(seq):
 
     seq and return value are strings
     """
-    if 'X' not in seq:
+    if "X" not in seq:
         return seq
     replacement = []
     ggsg = _ggsg_generator()
     for aa in seq:
-        if aa != 'X':
+        if aa != "X":
             replacement.append(aa)
             # restart linker iterator for next stretch of Xs
             ggsg = _ggsg_generator()
         else:
             replacement.append(next(ggsg))
-    return ''.join(replacement)
+    return "".join(replacement)
 
 
-def pad_ggsg(seq, length, terminus='C'):
+def pad_ggsg(seq, length, terminus="C"):
     """pad seq with Serine-Glycine linker (GGSG pattern)
 
     seq and return are Bio.Seq.Seq
@@ -126,10 +129,10 @@ def pad_ggsg(seq, length, terminus='C'):
     if len(seq) >= length:
         return seq
     ggsg = _ggsg_generator()
-    pad = ''.join([next(ggsg) for _ in range(length - len(seq))])
-    if terminus == 'C':
+    pad = "".join([next(ggsg) for _ in range(length - len(seq))])
+    if terminus == "C":
         return seq + pad
-    elif terminus == 'N':
+    elif terminus == "N":
         return pad + seq
     else:
         raise ValueError('terminus must be "N" or "C"')
@@ -146,14 +149,16 @@ def disambiguate_iupac_string(seq, ambiguous_letters, disambiguation):
     Bio.Data.IUPACData.ambiguous_dna_values)
 
     """
-    match = re.search('[{}]'.format(ambiguous_letters), str(seq))
+    match = re.search("[{}]".format(ambiguous_letters), str(seq))
     if match is None:
         yield seq
     else:
         idx = match.start()
         for letter in disambiguation[seq[idx]]:
-            disambiguated = seq[:idx] + letter + seq[idx + 1:]
-            for s in disambiguate_iupac_string(disambiguated, ambiguous_letters, disambiguation):
+            disambiguated = seq[:idx] + letter + seq[idx + 1 :]
+            for s in disambiguate_iupac_string(
+                disambiguated, ambiguous_letters, disambiguation
+            ):
                 yield s
 
 
@@ -169,7 +174,9 @@ def disambiguate_iupac_aa(seq):
     """generator
     seq is Bio.Seq.Seq
     """
-    for s in disambiguate_iupac_string(seq, extended_protein_letters, ambiguous_protein_values):
+    for s in disambiguate_iupac_string(
+        seq, extended_protein_letters, ambiguous_protein_values
+    ):
         yield s
 
 
@@ -191,11 +198,15 @@ def num_disambiguated_iupac_strings(seq, ambiguous_letters, disambiguation):
 
 
 def num_disambiguated_iupac_dna(seq):
-    return num_disambiguated_iupac_strings(seq, extended_dna_letters, ambiguous_dna_values)
+    return num_disambiguated_iupac_strings(
+        seq, extended_dna_letters, ambiguous_dna_values
+    )
 
 
 def num_disambiguated_iupac_aa(seq):
-    return num_disambiguated_iupac_strings(seq, extended_protein_letters, ambiguous_protein_values)
+    return num_disambiguated_iupac_strings(
+        seq, extended_protein_letters, ambiguous_protein_values
+    )
 
 
 def recode(seq, codon_sampler):
@@ -208,8 +219,9 @@ def recode(seq, codon_sampler):
     return recoded
 
 
-def recode_sites_from_cds(seq, sites, codon_sampler, cds_start=None,
-                          cds_end=None, search_start=None):
+def recode_sites_from_cds(
+    seq, sites, codon_sampler, cds_start=None, cds_end=None, search_start=None
+):
     """
     seq is a Bio.Seq.Seq
     site is a list[Bio.Seq.Seq]
@@ -222,7 +234,7 @@ def recode_sites_from_cds(seq, sites, codon_sampler, cds_start=None,
     cds_start = cds_start if cds_start is not None else 0
     cds_end = cds_end if cds_end is not None else len(seq)
     if (cds_end - cds_start) % 3 != 0:
-        raise PepsynError('CDS length is not multiple of 3')
+        raise PepsynError("CDS length is not multiple of 3")
 
     # initial search for site; handle recursion breaking cases here
     # search for all potential sites
@@ -235,12 +247,19 @@ def recode_sites_from_cds(seq, sites, codon_sampler, cds_start=None,
     site_start = min([tup[0] for tup in positive_matches])
     # for any site that starts at site_start (could be multiple), choose the
     # largest site length
-    site_end = site_start + max([tup[1] for tup in positive_matches if tup[0] == site_start])
+    site_end = site_start + max(
+        [tup[1] for tup in positive_matches if tup[0] == site_start]
+    )
     if site_end <= cds_start or site_start >= cds_end:
         # sites don't overlap the CDS => move on further down the seq
-        return recode_sites_from_cds(seq, sites, codon_sampler,
-                                     cds_start=cds_start, cds_end=cds_end,
-                                     search_start=(site_start + 1))
+        return recode_sites_from_cds(
+            seq,
+            sites,
+            codon_sampler,
+            cds_start=cds_start,
+            cds_end=cds_end,
+            search_start=(site_start + 1),
+        )
     # site needs to be recoded
     # computes offsets for the site boundaries to align them to coding frame
     start_offset = (site_start - cds_start) % 3
@@ -253,16 +272,27 @@ def recode_sites_from_cds(seq, sites, codon_sampler, cds_start=None,
     candidate = seq[:recode_start] + recoded_chunk + seq[recode_end:]
     # TODO: this can cause a maximum recursion error if it never finds a
     # recoded sequence without the site recursively
-    return recode_sites_from_cds(candidate, sites, codon_sampler,
-                                 cds_start=cds_start, cds_end=cds_end,
-                                 search_start=search_start)
+    return recode_sites_from_cds(
+        candidate,
+        sites,
+        codon_sampler,
+        cds_start=cds_start,
+        cds_end=cds_end,
+        search_start=search_start,
+    )
 
 
-def recode_site_from_cds(seq, site, codon_sampler, cds_start=None,
-                         cds_end=None, search_start=None):
-    return recode_sites_from_cds(seq, [site], codon_sampler,
-                                 cds_start=cds_start, cds_end=cds_end,
-                                 search_start=search_start)
+def recode_site_from_cds(
+    seq, site, codon_sampler, cds_start=None, cds_end=None, search_start=None
+):
+    return recode_sites_from_cds(
+        seq,
+        [site],
+        codon_sampler,
+        cds_start=cds_start,
+        cds_end=cds_end,
+        search_start=search_start,
+    )
 
 
 def orf_stats(orfs):
@@ -271,20 +301,28 @@ def orf_stats(orfs):
     orfs is name->seq dicts
     """
     import numpy as np
+
     orf_lens = np.asarray([len(o) for o in orfs.values()])
     ambiguity_factors = {n: num_disambiguated_iupac_aa(s) for (n, s) in orfs.items()}
     stats = {}
-    stats['num_orfs'] = len(orfs)
-    stats['total_orf_residues'] = orf_lens.sum().tolist()
-    stats['orf_lens_hist'] = compute_int_hist(orf_lens)
-    stats['avg_orf_len'] = orf_lens.mean().tolist()
-    stats['max_orf_len'] = orf_lens.max().tolist()
-    stats['min_orf_len'] = orf_lens.min().tolist()
-    stats['num_orfs_internal_stops'] = sum(['*' in s.rstrip('*') for s in orfs.values()])
-    stats['num_orfs_Xs'] = sum(['X' in s.upper() for s in orfs.values()])
-    stats['max_ambig_factor'] = max(ambiguity_factors.values())
-    stats['ambig_factor_hist'] = compute_int_hist(list(ambiguity_factors.values()))
-    stats['top_5_ambig'] = list(map(list, sorted(ambiguity_factors.items(), key=lambda tup: tup[1], reverse=True)[:5]))
+    stats["num_orfs"] = len(orfs)
+    stats["total_orf_residues"] = orf_lens.sum().tolist()
+    stats["orf_lens_hist"] = compute_int_hist(orf_lens)
+    stats["avg_orf_len"] = orf_lens.mean().tolist()
+    stats["max_orf_len"] = orf_lens.max().tolist()
+    stats["min_orf_len"] = orf_lens.min().tolist()
+    stats["num_orfs_internal_stops"] = sum(
+        ["*" in s.rstrip("*") for s in orfs.values()]
+    )
+    stats["num_orfs_Xs"] = sum(["X" in s.upper() for s in orfs.values()])
+    stats["max_ambig_factor"] = max(ambiguity_factors.values())
+    stats["ambig_factor_hist"] = compute_int_hist(list(ambiguity_factors.values()))
+    stats["top_5_ambig"] = list(
+        map(
+            list,
+            sorted(ambiguity_factors.items(), key=lambda tup: tup[1], reverse=True)[:5],
+        )
+    )
 
     return stats
 
@@ -298,6 +336,7 @@ def tile_stats(orfs, tiles):
     orf name is a prefix to the name of a tile from that orf
     """
     import numpy as np
+
     tile_lens = np.asarray([len(t) for t in tiles.values()])
     orf_lens = np.asarray([len(o) for o in orfs.values()])
     tile_size = int(round(np.median(tile_lens)).tolist())
@@ -323,19 +362,28 @@ def tile_stats(orfs, tiles):
         orf_coverages[orf] = tile_residues / orf_residues
 
     stats = {}
-    stats['tile_size'] = tile_size
-    stats['num_tiles'] = len(tiles)
-    stats['total_tile_residues'] = tile_lens.sum().tolist()
-    stats['avg_orf_coverage'] = tile_lens.sum().tolist() / orf_lens.sum().tolist()
-    stats['num_orfs_smaller_than_tile_size'] = (orf_lens < tile_size).sum().tolist()
-    stats['approx_num_tiles_naive_1x_tiling'] = np.ceil(orf_lens / tile_size).sum().tolist()
-    stats['avg_orf_coverage'] = sum(orf_coverages.values()) / len(orf_coverages)
-    stats['max_tiles_per_len_normed_orf'] = max(orf_coverages.values())
-    stats['tile_len_hist'] = compute_int_hist(tile_lens)
+    stats["tile_size"] = tile_size
+    stats["num_tiles"] = len(tiles)
+    stats["total_tile_residues"] = tile_lens.sum().tolist()
+    stats["avg_orf_coverage"] = tile_lens.sum().tolist() / orf_lens.sum().tolist()
+    stats["num_orfs_smaller_than_tile_size"] = (orf_lens < tile_size).sum().tolist()
+    stats["approx_num_tiles_naive_1x_tiling"] = (
+        np.ceil(orf_lens / tile_size).sum().tolist()
+    )
+    stats["avg_orf_coverage"] = sum(orf_coverages.values()) / len(orf_coverages)
+    stats["max_tiles_per_len_normed_orf"] = max(orf_coverages.values())
+    stats["tile_len_hist"] = compute_int_hist(tile_lens)
     # what is the tile coverage of each ORF (tot tile residues / orf residues)
     # tiles are assigned to ORFs if they share a name
-    stats['orf_coverage_hist'] = compute_float_hist(list(orf_coverages.values()))
-    stats['top_5_orf_cov'] = list(map(list, sorted(orf_coverages.items(), key=lambda tup: tup[1], reverse=True)[:5]))
-    stats['bot_5_orf_cov'] = list(map(list, sorted(orf_coverages.items(), key=lambda tup: tup[1])[:5]))
+    stats["orf_coverage_hist"] = compute_float_hist(list(orf_coverages.values()))
+    stats["top_5_orf_cov"] = list(
+        map(
+            list,
+            sorted(orf_coverages.items(), key=lambda tup: tup[1], reverse=True)[:5],
+        )
+    )
+    stats["bot_5_orf_cov"] = list(
+        map(list, sorted(orf_coverages.items(), key=lambda tup: tup[1])[:5])
+    )
 
     return stats

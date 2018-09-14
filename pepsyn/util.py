@@ -31,11 +31,11 @@ def site2dna(site):
     convert to DNA sequence and checks strict alphabet
     """
     if site in enzymedict:
-        dna = Seq(enzymedict[site]['site'], unambiguous_dna)
+        dna = Seq(enzymedict[site]["site"], unambiguous_dna)
     else:
         dna = Seq(site, unambiguous_dna)
     if not _verify_alphabet(dna):
-        raise ValueError('site is not recognized enzyme and not strict DNA')
+        raise ValueError("site is not recognized enzyme and not strict DNA")
     return dna
 
 
@@ -44,10 +44,15 @@ def sliding_window(n, seq):
 
     Stolen pytoolz impl
     """
-    return zip(*(collections.deque(itertools.islice(it, i), 0) or it
-               for i, it in enumerate(itertools.tee(seq, n))))
+    return zip(
+        *(
+            collections.deque(itertools.islice(it, i), 0) or it
+            for i, it in enumerate(itertools.tee(seq, n))
+        )
+    )
 
 
+# fmt: off
 # https://github.com/lh3/readfq
 def readfq(fp): # this is a generator function
     last = None # this is a buffer keeping the last unprocessed line
@@ -79,15 +84,18 @@ def readfq(fp): # this is a generator function
             if last: # reach EOF before reading enough quality
                 yield name, seq, None # yield a fasta record instead
                 break
+# fmt: on
 
 
 def compute_int_hist(values):
     import numpy as np
+
     (hist, bin_edges) = np.histogram(values, bins=range(max(values) + 1))
-    return {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
+    return {"hist": hist.tolist(), "bin_edges": bin_edges.tolist()}
 
 
 def compute_float_hist(values):
     import numpy as np
-    (hist, bin_edges) = np.histogram(values, bins='auto')
-    return {'hist': hist.tolist(), 'bin_edges': bin_edges.tolist()}
+
+    (hist, bin_edges) = np.histogram(values, bins="auto")
+    return {"hist": hist.tolist(), "bin_edges": bin_edges.tolist()}

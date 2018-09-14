@@ -19,13 +19,12 @@ from pepsyn.util import site2dna
 
 
 class TestUtil(object):
-
     def test_site2dna_enzyme(self):
-        assert site2dna('EcoRI') == 'GAATTC'
+        assert site2dna("EcoRI") == "GAATTC"
 
     def test_bad_site(self):
         with raises(ValueError):
-            site2dna('foo')
+            site2dna("foo")
 
     def test_manual_seq(self):
-        assert site2dna('AGGCG') == 'AGGCG'
+        assert site2dna("AGGCG") == "AGGCG"

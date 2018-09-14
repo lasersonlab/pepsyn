@@ -17,16 +17,20 @@ from math import isclose
 from Bio.Data.CodonTable import standard_dna_table
 
 from pepsyn.codons import (
-    zero_non_amber_stops, zero_low_freq_codons, ecoli_codon_usage, amber_codon,
-    ochre_codon, opal_codon)
+    zero_non_amber_stops,
+    zero_low_freq_codons,
+    ecoli_codon_usage,
+    amber_codon,
+    ochre_codon,
+    opal_codon,
+)
 
 
 class TestUsageManipulation(object):
-
     def test_zero_non_amber(self):
         zeroed_weight = (
-            ecoli_codon_usage.freq[ochre_codon] +
-            ecoli_codon_usage.freq[opal_codon])
+            ecoli_codon_usage.freq[ochre_codon] + ecoli_codon_usage.freq[opal_codon]
+        )
         new_usage = zero_non_amber_stops(ecoli_codon_usage)
         for codon in new_usage.freq:
             if codon == ochre_codon or codon == opal_codon:

@@ -23,8 +23,17 @@ from logging import captureWarnings
 captureWarnings(True)
 
 from click import (
-    group, command, option, argument, File, Choice, Path, version_option,
-    Abort, UsageError)
+    group,
+    command,
+    option,
+    argument,
+    File,
+    Choice,
+    Path,
+    version_option,
+    Abort,
+    UsageError,
+)
 from Bio import SeqIO
 from Bio.SeqRecord import SeqRecord
 from Bio.Data.CodonTable import standard_dna_table
@@ -33,20 +42,33 @@ import yaml
 
 from pepsyn import __version__
 from pepsyn.operations import (
-    reverse_translate, recode_site_from_cds, recode_sites_from_cds, x_to_ggsg,
-    disambiguate_iupac_aa, tile as tile_op, ctermpep as cterm_oligo, pad_ggsg,
-    tile_stats, orf_stats, num_disambiguated_iupac_aa)
+    reverse_translate,
+    recode_site_from_cds,
+    recode_sites_from_cds,
+    x_to_ggsg,
+    disambiguate_iupac_aa,
+    tile as tile_op,
+    ctermpep as cterm_oligo,
+    pad_ggsg,
+    tile_stats,
+    orf_stats,
+    num_disambiguated_iupac_aa,
+)
 from pepsyn.codons import (
-    FreqWeightedCodonSampler, UniformCodonSampler, ecoli_codon_usage,
-    zero_non_amber_stops, zero_low_freq_codons)
+    FreqWeightedCodonSampler,
+    UniformCodonSampler,
+    ecoli_codon_usage,
+    zero_non_amber_stops,
+    zero_low_freq_codons,
+)
 from pepsyn.util import site2dna, sliding_window, readfq
 
 
 def print_fasta(sr, out):
-    print('>{}\n{}'.format(sr.id, str(sr.seq)), file=out)
+    print(">{}\n{}".format(sr.id, str(sr.seq)), file=out)
 
 
-@group(context_settings={'help_option_names': ['-h', '--help']})
+@group(context_settings={"help_option_names": ["-h", "--help"]})
 @version_option(__version__)
 def cli():
     """pepsyn -- peptide synthesis design"""
@@ -54,39 +76,39 @@ def cli():
 
 
 # reusable args
-argument_input = argument('input', type=File('r'))
-argument_output = argument('output', type=File('w'))
+argument_input = argument("input", type=File("r"))
+argument_output = argument("output", type=File("w"))
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('--length', '-l', type=int, help='Length of output oligos')
-@option('--overlap', '-p', type=int, help='Overlap of oligos')
+@option("--length", "-l", type=int, help="Length of output oligos")
+@option("--overlap", "-p", type=int, help="Overlap of oligos")
 def tile(input, output, length, overlap):
     """tile a set of sequences"""
-    for (name, seq, qual) in tqdm(readfq(input), desc='tile', unit='seq'):
+    for (name, seq, qual) in tqdm(readfq(input), desc="tile", unit="seq"):
         for (start, end, t) in tile_op(seq, length, overlap):
-                output_title = f'{name}|{start}-{end}'
-                print(f'>{output_title}\n{t}', file=output)
+            output_title = f"{name}|{start}-{end}"
+            print(f">{output_title}\n{t}", file=output)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('--length', '-l', type=int, help='Length of output C-terminal oligo')
-@option('--add-stop', '-s', is_flag=True, help='Add a stop codon to peptide')
+@option("--length", "-l", type=int, help="Length of output C-terminal oligo")
+@option("--add-stop", "-s", is_flag=True, help="Add a stop codon to peptide")
 def ctermpep(input, output, length, add_stop):
     """extract C-terminal peptide (AA alphabets)
 
     will return entirety of seqs shorter than length
     """
-    for (name, seq, qual) in tqdm(readfq(input), desc='ctermpep', unit='seq'):
+    for (name, seq, qual) in tqdm(readfq(input), desc="ctermpep", unit="seq"):
         oligo = cterm_oligo(seq, length, add_stop=add_stop)
-        output_title = f'{name}|CTERM'
+        output_title = f"{name}|CTERM"
         if add_stop:
-            output_title = f'{output_title}|STOP'
-        print(f'>{output_title}\n{oligo}', file=output)
+            output_title = f"{output_title}|STOP"
+        print(f">{output_title}\n{oligo}", file=output)
 
 
 @cli.command()
@@ -95,8 +117,8 @@ def ctermpep(input, output, length, add_stop):
 def stripstop(input, output):
     """strip stop codons from end of protein sequence"""
     for (name, seq, qual) in readfq(input):
-        seq = seq.rstrip('*')
-        print(f'>{name}\n{seq}', file=output)
+        seq = seq.rstrip("*")
+        print(f">{name}\n{seq}", file=output)
 
 
 @cli.command()
@@ -105,17 +127,17 @@ def stripstop(input, output):
 def filterstop(input, output):
     """filter out sequences that contain stop codons (*)"""
     for (name, seq, qual) in readfq(input):
-        if '*' in seq:
+        if "*" in seq:
             continue
-        seq = seq.rstrip('*')
-        print(f'>{name}\n{seq}', file=output)
+        seq = seq.rstrip("*")
+        print(f">{name}\n{seq}", file=output)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('-m', '--min-len', type=int, help='Min length of sequence to keep')
-@option('-M', '--max-len', type=int, help='Max length of sequence to keep')
+@option("-m", "--min-len", type=int, help="Min length of sequence to keep")
+@option("-M", "--max-len", type=int, help="Max length of sequence to keep")
 def filterlen(input, output, min_len, max_len):
     """filter sequences of a given length"""
     if min_len is None:
@@ -127,95 +149,113 @@ def filterlen(input, output, min_len, max_len):
             continue
         if len(seq) > max_len:
             continue
-        print(f'>{name}\n{seq}', file=output)
+        print(f">{name}\n{seq}", file=output)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('--length', '-l', type=int, help='Target length for peptide')
-@option('--n-term', '-n', 'terminus', flag_value='N',
-        help='Pad the N-terminus')
-@option('--c-term', '-c', 'terminus', flag_value='C', default=True,
-        help='Pad the C-terminus')
+@option("--length", "-l", type=int, help="Target length for peptide")
+@option("--n-term", "-n", "terminus", flag_value="N", help="Pad the N-terminus")
+@option(
+    "--c-term",
+    "-c",
+    "terminus",
+    flag_value="C",
+    default=True,
+    help="Pad the C-terminus",
+)
 def pad(input, output, length, terminus):
     """pad peptide to target length with GSGG"""
     for (name, seq, qual) in readfq(input):
         padded = pad_ggsg(seq, length, terminus)
         pad_len = len(padded) - len(seq)
         if pad_len > 0:
-            output_title = f'{name}|{terminus}-PADDED-{pad_len}'
+            output_title = f"{name}|{terminus}-PADDED-{pad_len}"
         else:
             output_title = name
-        print(f'>{output_title}\n{padded}', file=output)
+        print(f">{output_title}\n{padded}", file=output)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('--prefix', '-p', help='DNA sequence to prefix each oligo')
+@option("--prefix", "-p", help="DNA sequence to prefix each oligo")
 def prefix(input, output, prefix):
     """add a prefix to each sequence"""
     for (name, seq, qual) in readfq(input):
         newseq = prefix + seq
-        print(f'>{name}\n{newseq}', file=output)
+        print(f">{name}\n{newseq}", file=output)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('--suffix', '-s', help='DNA sequence to suffix each oligo')
+@option("--suffix", "-s", help="DNA sequence to suffix each oligo")
 def suffix(input, output, suffix):
     """add a suffix to each sequence"""
     for (name, seq, qual) in readfq(input):
         newseq = seq + suffix
-        print(f'>{name}\n{newseq}', file=output)
+        print(f">{name}\n{newseq}", file=output)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('--left', '-l', default=0, help='number of bases to clip from left')
-@option('--right', '-r', default=0, help='number of bases to clip from right')
+@option("--left", "-l", default=0, help="number of bases to clip from left")
+@option("--right", "-r", default=0, help="number of bases to clip from right")
 def clip(input, output, left, right):
     """clip bases from the ends of each sequence"""
     for (name, seq, qual) in readfq(input):
         stop = len(seq) - right
-        print(f'>{name}\n{seq[left:stop]}', file=output)
+        print(f">{name}\n{seq[left:stop]}", file=output)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('--codon-table', '-t', default='Standard',
-        help='ONLY STANDARD TABLE IMPLEMENTED')
-@option('--truncate-at-stop', '-x', is_flag=True,
-        help='Truncate translation at first stop codon')
+@option(
+    "--codon-table", "-t", default="Standard", help="ONLY STANDARD TABLE IMPLEMENTED"
+)
+@option(
+    "--truncate-at-stop",
+    "-x",
+    is_flag=True,
+    help="Truncate translation at first stop codon",
+)
 def translate(input, output, codon_table, truncate_at_stop):
     """translate nucleotide sequences into protein"""
-    for seqrecord in tqdm(SeqIO.parse(input, 'fasta'), desc='translate', unit='seq'):
+    for seqrecord in tqdm(SeqIO.parse(input, "fasta"), desc="translate", unit="seq"):
         aa_id = seqrecord.id
         aa_seq = seqrecord.seq.translate(table=codon_table)
         if truncate_at_stop:
-            aa_seq = aa_seq.split('*')[0]
-        print_fasta(SeqRecord(aa_seq, aa_id, description=''), output)
+            aa_seq = aa_seq.split("*")[0]
+        print_fasta(SeqRecord(aa_seq, aa_id, description=""), output)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('--codon-table', '-t', default='Standard',
-        help='ONLY STANDARD TABLE IMPLEMENTED')
-@option('--codon-usage', '-u', default='ecoli', help='ONLY ECOLI IMPLEMENTED')
-@option('--sampler', default='weighted', show_default=True,
-        type=Choice(['weighted', 'uniform']), help='Codon sampling method')
-@option('--codon-freq-threshold', type=float, default=None,
-        help='Minimum codon frequency')
-@option('--amber-only', is_flag=True, help='Use only amber stop codon')
-def revtrans(input, output, codon_table, codon_usage, sampler,
-             codon_freq_threshold, amber_only):
+@option(
+    "--codon-table", "-t", default="Standard", help="ONLY STANDARD TABLE IMPLEMENTED"
+)
+@option("--codon-usage", "-u", default="ecoli", help="ONLY ECOLI IMPLEMENTED")
+@option(
+    "--sampler",
+    default="weighted",
+    show_default=True,
+    type=Choice(["weighted", "uniform"]),
+    help="Codon sampling method",
+)
+@option(
+    "--codon-freq-threshold", type=float, default=None, help="Minimum codon frequency"
+)
+@option("--amber-only", is_flag=True, help="Use only amber stop codon")
+def revtrans(
+    input, output, codon_table, codon_usage, sampler, codon_freq_threshold, amber_only
+):
     """reverse translate amino acid sequences into DNA"""
-    if sampler == 'weighted':
+    if sampler == "weighted":
         usage = ecoli_codon_usage
         if codon_freq_threshold is not None:
             # TODO: this is hardcoded in and there's a leaky abstraction here
@@ -224,35 +264,63 @@ def revtrans(input, output, codon_table, codon_usage, sampler,
         if amber_only:
             usage = zero_non_amber_stops(usage)
         codon_sampler = FreqWeightedCodonSampler(usage=usage)
-    elif sampler == 'uniform':
+    elif sampler == "uniform":
         codon_sampler = UniformCodonSampler()
-    for seqrecord in tqdm(SeqIO.parse(input, 'fasta'), desc='revtrans', unit='seq'):
+    for seqrecord in tqdm(SeqIO.parse(input, "fasta"), desc="revtrans", unit="seq"):
         dna_id = seqrecord.id
         dna_seq = reverse_translate(seqrecord.seq, codon_sampler)
-        print_fasta(SeqRecord(dna_seq, dna_id, description=''), output)
+        print_fasta(SeqRecord(dna_seq, dna_id, description=""), output)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('--site', multiple=True,
-        help='Site to remove (e.g., EcoRI, AGCCT); case sens; allow multiple')
-@option('--clip-left', type=int, default=0,
-        help='Number of bases to clip from start of sequence to get to CDS')
-@option('--clip-right', type=int, default=0,
-        help='Number of bases to clip from end of sequence to get to CDS')
-@option('--codon-table', '-t', default='Standard',
-        help='ONLY STANDARD TABLE IMPLEMENTED')
-@option('--codon-usage', '-u', default='ecoli', help='ONLY ECOLI IMPLEMENTED')
-@option('--sampler', default='weighted', show_default=True,
-        type=Choice(['weighted', 'uniform']), help='Codon sampling method')
-@option('--codon-freq-threshold', type=float, default=None,
-        help='Minimum codon frequency')
-@option('--amber-only', is_flag=True, help='Use only amber stop codon')
-def recodesite(input, output, site, clip_left, clip_right, codon_table,
-               codon_usage, sampler, codon_freq_threshold, amber_only):
+@option(
+    "--site",
+    multiple=True,
+    help="Site to remove (e.g., EcoRI, AGCCT); case sens; allow multiple",
+)
+@option(
+    "--clip-left",
+    type=int,
+    default=0,
+    help="Number of bases to clip from start of sequence to get to CDS",
+)
+@option(
+    "--clip-right",
+    type=int,
+    default=0,
+    help="Number of bases to clip from end of sequence to get to CDS",
+)
+@option(
+    "--codon-table", "-t", default="Standard", help="ONLY STANDARD TABLE IMPLEMENTED"
+)
+@option("--codon-usage", "-u", default="ecoli", help="ONLY ECOLI IMPLEMENTED")
+@option(
+    "--sampler",
+    default="weighted",
+    show_default=True,
+    type=Choice(["weighted", "uniform"]),
+    help="Codon sampling method",
+)
+@option(
+    "--codon-freq-threshold", type=float, default=None, help="Minimum codon frequency"
+)
+@option("--amber-only", is_flag=True, help="Use only amber stop codon")
+def recodesite(
+    input,
+    output,
+    site,
+    clip_left,
+    clip_right,
+    codon_table,
+    codon_usage,
+    sampler,
+    codon_freq_threshold,
+    amber_only,
+):
     """remove site from each sequence's CDS by recoding"""
-    if sampler == 'weighted':
+    if sampler == "weighted":
         usage = ecoli_codon_usage
         if codon_freq_threshold is not None:
             # TODO: this is hardcoded in and there's a leaky abstraction here
@@ -261,19 +329,20 @@ def recodesite(input, output, site, clip_left, clip_right, codon_table,
         if amber_only:
             usage = zero_non_amber_stops(usage)
         codon_sampler = FreqWeightedCodonSampler(usage=usage)
-    elif sampler == 'uniform':
+    elif sampler == "uniform":
         codon_sampler = UniformCodonSampler()
 
     sites = [site2dna(s) for s in site]
     # sites is now a list[Bio.Seq.Seq]
 
-    for seqrecord in SeqIO.parse(input, 'fasta'):
+    for seqrecord in SeqIO.parse(input, "fasta"):
         id_ = seqrecord.id
         cds_start = clip_left
         cds_end = len(seqrecord) - clip_right
-        seq = recode_sites_from_cds(seqrecord.seq, sites, codon_sampler,
-                                    cds_start, cds_end)
-        print_fasta(SeqRecord(seq, id_, description=''), output)
+        seq = recode_sites_from_cds(
+            seqrecord.seq, sites, codon_sampler, cds_start, cds_end
+        )
+        print_fasta(SeqRecord(seq, id_, description=""), output)
 
 
 @cli.command()
@@ -284,10 +353,10 @@ def x2ggsg(input, output):
     for (name, seq, qual) in readfq(input):
         replacement = x_to_ggsg(seq)
         if replacement != seq:
-            output_title = f'{name}|withGSlinker'
+            output_title = f"{name}|withGSlinker"
         else:
             output_title = name
-        print(f'>{output_title}\n{replacement}', file=output)
+        print(f">{output_title}\n{replacement}", file=output)
 
 
 @cli.command()
@@ -302,20 +371,28 @@ def disambiguateaa(input, output):
     for (name, ambig, qual) in readfq(input):
         n = num_disambiguated_iupac_aa(ambig)
         digits = floor(log10(n)) + 1
-        fmt = f'{name}|disambig_{{:0{digits}d}}'
+        fmt = f"{name}|disambig_{{:0{digits}d}}"
         for (i, unambig) in enumerate(disambiguate_iupac_aa(ambig)):
             if n > 1:
                 name = fmt.format(i + 1)
-            print(f'>{name}\n{unambig}', file=output)
+            print(f">{name}\n{unambig}", file=output)
 
 
 @cli.command()
 @argument_input
-@option('--site', help='Site to find (e.g., EcoRI, AGCCT); case sensitive')
-@option('--clip-left', type=int, default=0,
-        help='Number of bases to clip from start of sequence to get to CDS')
-@option('--clip-right', type=int, default=0,
-        help='Number of bases to clip from end of sequence to get to CDS')
+@option("--site", help="Site to find (e.g., EcoRI, AGCCT); case sensitive")
+@option(
+    "--clip-left",
+    type=int,
+    default=0,
+    help="Number of bases to clip from start of sequence to get to CDS",
+)
+@option(
+    "--clip-right",
+    type=int,
+    default=0,
+    help="Number of bases to clip from end of sequence to get to CDS",
+)
 def findsite(input, site, clip_left, clip_right):
     """find locations of a site"""
     query = str(site2dna(site))
@@ -324,13 +401,13 @@ def findsite(input, site, clip_left, clip_right):
         end = len(seq) - clip_right
         idx = seq[start:end].find(query)
         if idx >= 0:
-            print(f'{name}|{site}|{idx + start}', file=sys.stdout)
+            print(f"{name}|{site}|{idx + start}", file=sys.stdout)
 
 
 @cli.command()
 @argument_input
-@argument('output_path', type=Path(exists=False))
-@option('-k', '--kmer-size', type=int, required=True, help='k-mer size')
+@argument("output_path", type=Path(exists=False))
+@option("-k", "--kmer-size", type=int, required=True, help="k-mer size")
 def builddbg(input, output_path, kmer_size):
     """build a de bruijn graph
 
@@ -342,29 +419,42 @@ def builddbg(input, output_path, kmer_size):
         import networkx as nx
         from pepsyn.dbg import fasta_handle_to_dbg
     except ImportError:
-        raise Abort('builddbg requires NetworkX')
+        raise Abort("builddbg requires NetworkX")
 
-    with tqdm(desc='building dbg') as pbar:
-        dbg = fasta_handle_to_dbg(input, kmer_size, tqdm=pbar,
-                                  ignore_short=True)
+    with tqdm(desc="building dbg") as pbar:
+        dbg = fasta_handle_to_dbg(input, kmer_size, tqdm=pbar, ignore_short=True)
     nx.write_gpickle(dbg, output_path)
 
 
 @cli.command()
 @argument_input
 @argument_output
-@option('-t', '--tile-size', type=int, required=True, help='tile size')
-@option('-d', '--dbg-path', type=Path(exists=True, dir_okay=False),
-        required=True,
-        help='path to prebuilt de bruijn graph (pickle file; .gz okay)')
-@option('-c', '--kmer-cov', type=float,
-        help='target avg k-mer coverage (incompatible with -n)')
-@option('-n', '--num-tiles', type=int,
-        help='number of output tiles (incompatible with -c)')
-@option('-p', '--preselected-tiles-path', type=File('r'),
-        help='fasta file containing previously selected tiles')
-def greedykmercov(input, output, tile_size, dbg_path, kmer_cov, num_tiles,
-                  preselected_tiles_path):
+@option("-t", "--tile-size", type=int, required=True, help="tile size")
+@option(
+    "-d",
+    "--dbg-path",
+    type=Path(exists=True, dir_okay=False),
+    required=True,
+    help="path to prebuilt de bruijn graph (pickle file; .gz okay)",
+)
+@option(
+    "-c",
+    "--kmer-cov",
+    type=float,
+    help="target avg k-mer coverage (incompatible with -n)",
+)
+@option(
+    "-n", "--num-tiles", type=int, help="number of output tiles (incompatible with -c)"
+)
+@option(
+    "-p",
+    "--preselected-tiles-path",
+    type=File("r"),
+    help="fasta file containing previously selected tiles",
+)
+def greedykmercov(
+    input, output, tile_size, dbg_path, kmer_cov, num_tiles, preselected_tiles_path
+):
     """select protein tiles by maximizing k-mer coverage on de bruijn graph
 
     each tile is a fragment of an observed input ORF
@@ -376,15 +466,15 @@ def greedykmercov(input, output, tile_size, dbg_path, kmer_cov, num_tiles,
         import networkx as nx
         from pepsyn.dbg import gen_kmers, setreduce_attr, sum_attr
     except ImportError:
-        raise Abort('greedykmercov requires NetworkX')
+        raise Abort("greedykmercov requires NetworkX")
     try:
         import numpy as np
     except ImportError:
-        raise Abort('greedykmercov requires NumPy')
+        raise Abort("greedykmercov requires NumPy")
     if kmer_cov and num_tiles:
-        raise UsageError('Set -c/--kmer-cov OR -n/--num-tiles but not both')
+        raise UsageError("Set -c/--kmer-cov OR -n/--num-tiles but not both")
     if not kmer_cov and not num_tiles:
-        raise UsageError('Must set one of -c/--kmer-cov OR -n/--num-tiles')
+        raise UsageError("Must set one of -c/--kmer-cov OR -n/--num-tiles")
 
     # load orfs
     orfs = {name: seq for (name, seq, qual) in readfq(input)}
@@ -393,7 +483,7 @@ def greedykmercov(input, output, tile_size, dbg_path, kmer_cov, num_tiles,
     dbg = nx.read_gpickle(dbg_path)
     kmer_size = len(next(iter(dbg)))
     if kmer_size > tile_size:
-        raise UsageError('kmer-size > tile_size')
+        raise UsageError("kmer-size > tile_size")
     kmers_remaining = len(dbg)
     num_components = nx.number_weakly_connected_components(dbg)
     if num_tiles:
@@ -402,20 +492,31 @@ def greedykmercov(input, output, tile_size, dbg_path, kmer_cov, num_tiles,
     # load preselected tiles
     preselected_tiles = [seq for (name, seq, qual) in readfq(preselected_tiles_path)]
     preselected_kmer_counts = Counter(
-        [kmer for tile in preselected_tiles for kmer in gen_kmers(tile, kmer_size, yield_short=True)])
+        [
+            kmer
+            for tile in preselected_tiles
+            for kmer in gen_kmers(tile, kmer_size, yield_short=True)
+        ]
+    )
 
     # process each graph component separately
-    component_iter = tqdm(nx.weakly_connected_components(dbg), unit='comp',
-                          desc='dbg components', total=num_components)
+    component_iter = tqdm(
+        nx.weakly_connected_components(dbg),
+        unit="comp",
+        desc="dbg components",
+        total=num_components,
+    )
     for component in component_iter:
-        component_orfs = setreduce_attr(dbg, component, 'orf')
+        component_orfs = setreduce_attr(dbg, component, "orf")
 
         # generate all candidate tiles
         tile_to_name = {}
-        for name in tqdm(component_orfs, desc='generating tiles'):
+        for name in tqdm(component_orfs, desc="generating tiles"):
             # special case short orfs
             if len(orfs[name]) < tile_size:
-                tile_to_name.setdefault(orfs[name], []).append((name, 0, len(orfs[name])))
+                tile_to_name.setdefault(orfs[name], []).append(
+                    (name, 0, len(orfs[name]))
+                )
             for (i, j, tile) in tile_op(orfs[name], tile_size, tile_size - 1):
                 tile_to_name.setdefault(tile, []).append((name, i, j))
         candidate_tiles = list(tile_to_name.keys())
@@ -424,10 +525,10 @@ def greedykmercov(input, output, tile_size, dbg_path, kmer_cov, num_tiles,
         tile_scores = []
         tile_lens = []
         kmer_to_idxs = {}
-        for idx, tile in enumerate(tqdm(candidate_tiles, desc='init tile scores')):
+        for idx, tile in enumerate(tqdm(candidate_tiles, desc="init tile scores")):
             score = 0
             for kmer in set(gen_kmers(tile, kmer_size)):
-                score += dbg.nodes[kmer]['multiplicity']
+                score += dbg.nodes[kmer]["multiplicity"]
                 kmer_to_idxs.setdefault(kmer, set()).add(idx)
             tile_scores.append(score / len(tile))
             tile_lens.append(len(tile))
@@ -439,56 +540,87 @@ def greedykmercov(input, output, tile_size, dbg_path, kmer_cov, num_tiles,
         for kmer in set(preselected_kmer_counts.keys()) & set(kmer_to_idxs.keys()):
             idxs = list(kmer_to_idxs[kmer])
             tile_scores.data[idxs] -= (
-                (preselected_kmer_counts[kmer] * dbg.nodes[kmer]['multiplicity']) / len(tile))
+                preselected_kmer_counts[kmer] * dbg.nodes[kmer]["multiplicity"]
+            ) / len(tile)
 
         # set number of tiles for this component
         if kmer_cov:
-            num_component_tiles = ceil(len(component) * kmer_cov / (tile_size - kmer_size + 1))
+            num_component_tiles = ceil(
+                len(component) * kmer_cov / (tile_size - kmer_size + 1)
+            )
         if num_tiles:
-            num_component_tiles = ceil(len(component) / kmers_remaining * tiles_remaining)
+            num_component_tiles = ceil(
+                len(component) / kmers_remaining * tiles_remaining
+            )
             kmers_remaining -= len(component)
             tiles_remaining -= num_component_tiles
 
         # choose tiles
-        for _ in trange(num_component_tiles, desc='choosing tiles'):
+        for _ in trange(num_component_tiles, desc="choosing tiles"):
             idx = tile_scores.argmax()
             tile_scores[idx] = np.ma.masked
             tile = candidate_tiles[idx]
 
             # write tile
             name, i, j = tile_to_name[tile][0]
-            nterm = '|NTERM' if dbg.nodes[tile[:kmer_size]].get('start_node', False) else ''
-            cterm = '|CTERM' if dbg.nodes[tile[-kmer_size:]].get('end_node', False) else ''
-            print(f'>{name}|{i}-{j}{nterm}{cterm}\n{tile}', file=output)
+            nterm = (
+                "|NTERM" if dbg.nodes[tile[:kmer_size]].get("start_node", False) else ""
+            )
+            cterm = (
+                "|CTERM" if dbg.nodes[tile[-kmer_size:]].get("end_node", False) else ""
+            )
+            print(f">{name}|{i}-{j}{nterm}{cterm}\n{tile}", file=output)
 
             # update tile scores
             for kmer in set(gen_kmers(tile, kmer_size)):
                 idxs = list(kmer_to_idxs[kmer])
-                tile_scores.data[idxs] -= dbg.nodes[kmer]['multiplicity'] / tile_lens[idxs]
+                tile_scores.data[idxs] -= (
+                    dbg.nodes[kmer]["multiplicity"] / tile_lens[idxs]
+                )
 
 
 @cli.command()
-@option('-d', '--dbg-path', type=Path(exists=True, dir_okay=False), required=True,
-        help='pickled dbg')
-@option('-p', '--tiles', type=Path(exists=True, dir_okay=False), required=True,
-        help='input protein tiles fasta')
-@option('-r', '--orfs', type=Path(exists=True, dir_okay=False), required=True,
-        help='input ORFs fasta')
-@option('-o', '--output', type=File('w'), default=sys.stdout,
-        help='output YAML path (default stdout)')
+@option(
+    "-d",
+    "--dbg-path",
+    type=Path(exists=True, dir_okay=False),
+    required=True,
+    help="pickled dbg",
+)
+@option(
+    "-p",
+    "--tiles",
+    type=Path(exists=True, dir_okay=False),
+    required=True,
+    help="input protein tiles fasta",
+)
+@option(
+    "-r",
+    "--orfs",
+    type=Path(exists=True, dir_okay=False),
+    required=True,
+    help="input ORFs fasta",
+)
+@option(
+    "-o",
+    "--output",
+    type=File("w"),
+    default=sys.stdout,
+    help="output YAML path (default stdout)",
+)
 def dbgtilesummary(dbg_path, tiles, orfs, output):
     """compute stats from de bruin graph"""
     try:
         import networkx as nx
         from pepsyn.dbg import dbg_stats
     except ImportError:
-        print('dbgtilesummary requires NetworkX', file=sys.stderr)
+        print("dbgtilesummary requires NetworkX", file=sys.stderr)
         raise Abort()
 
     dbg = nx.read_gpickle(dbg_path)
-    with open(orfs, 'r') as ip:
+    with open(orfs, "r") as ip:
         orfs = [seq for (name, seq, qual) in readfq(ip)]
-    with open(tiles, 'r') as ip:
+    with open(tiles, "r") as ip:
         tiles = [seq for (name, seq, qual) in readfq(ip)]
 
     stats = dbg_stats(dbg, orfs, tiles)
@@ -497,20 +629,35 @@ def dbgtilesummary(dbg_path, tiles, orfs, output):
 
 
 @cli.command()
-@option('-p', '--tiles', type=Path(exists=True, dir_okay=False), required=True,
-        help='input protein tiles fasta')
-@option('-r', '--orfs', type=Path(exists=True, dir_okay=False), required=True,
-        help='input ORFs fasta')
-@option('-o', '--output', type=File('w'), default=sys.stdout,
-        help='output YAML path (default stdout)')
+@option(
+    "-p",
+    "--tiles",
+    type=Path(exists=True, dir_okay=False),
+    required=True,
+    help="input protein tiles fasta",
+)
+@option(
+    "-r",
+    "--orfs",
+    type=Path(exists=True, dir_okay=False),
+    required=True,
+    help="input ORFs fasta",
+)
+@option(
+    "-o",
+    "--output",
+    type=File("w"),
+    default=sys.stdout,
+    help="output YAML path (default stdout)",
+)
 def tilesummary(tiles, orfs, output):
     """compute ORF stats
 
     can be used on raw or cleaned orfs
     """
-    with open(orfs, 'r') as ip:
+    with open(orfs, "r") as ip:
         orfs = {name: seq for (name, seq, qual) in readfq(ip)}
-    with open(tiles, 'r') as ip:
+    with open(tiles, "r") as ip:
         tiles = {name: seq for (name, seq, qual) in readfq(ip)}
     stats = tile_stats(orfs, tiles)
     print(yaml.dump(stats), file=output)
