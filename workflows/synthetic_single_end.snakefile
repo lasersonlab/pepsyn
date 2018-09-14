@@ -3,6 +3,8 @@ from glob import glob
 from tqdm import tqdm
 
 
+import os.path as osp
+
 def fastx_stem(path):
     m = re.match('(.+)(?:\.fast[aq]|\.fna|\.f[aq])(?:\.gz)?$', osp.basename(path))
     if m is None:
@@ -38,7 +40,7 @@ config['samples'] = {fastx_stem(f): f for f in input_files}
 rule all:
     input:
         expand('{sample}.bam', sample=config['samples']),
-        expand('{sample}.counts.tsv', sample=config['samples']),
+        expand('{sample}.alignment_counts.tsv', sample=config['samples']),
         expand('{sample}.exact_matches.tsv', sample=config['samples']),
         expand('{sample}.summary.yaml', sample=config['samples']),
         expand('{sample}.report.html', sample=config['samples']),
@@ -76,11 +78,11 @@ rule compute_alignment_counts:
         """
 
 
-rule compute_match_counts:
+rule compute_exact_matches:
     input:
         '{sample}.bam'
     output:
-        '{sample}.match_counts.tsv'
+        '{sample}.exact_matches.tsv'
     run:
         from collections import Counter
         from pysam import AlignmentFile
@@ -90,7 +92,7 @@ rule compute_match_counts:
             if aln.flag == 0 and len(aln.cigar) == 1 and aln.cigar[0] == (0, aln.query_length):
                 counts[aln.reference_name] += 1
         with open(output[0], 'w') as op:
-            print('id\t{}'.format(wildcards.sample), file=op)
+            print('id\tcount', file=op)
             for n in bamfile.header.references:
                 print('{}\t{}'.format(n, counts[n]), file=op)
 
