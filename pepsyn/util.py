@@ -15,6 +15,7 @@
 import collections
 import itertools
 
+import numpy as np
 from Bio.Seq import Seq
 from Bio.Alphabet import _verify_alphabet
 from Bio.Alphabet.IUPAC import unambiguous_dna
@@ -54,7 +55,7 @@ def sliding_window(n, seq):
 
 # fmt: off
 # https://github.com/lh3/readfq
-def readfq(fp): # this is a generator function
+def readfq(fp): # this is a generator function  # pragma: no cover
     last = None # this is a buffer keeping the last unprocessed line
     while True: # mimic closure; is it a bad idea?
         if not last: # the first record or a record following a fastq
@@ -88,14 +89,10 @@ def readfq(fp): # this is a generator function
 
 
 def compute_int_hist(values):
-    import numpy as np
-
     (hist, bin_edges) = np.histogram(values, bins=range(max(values) + 1))
     return {"hist": hist.tolist(), "bin_edges": bin_edges.tolist()}
 
 
 def compute_float_hist(values):
-    import numpy as np
-
     (hist, bin_edges) = np.histogram(values, bins="auto")
     return {"hist": hist.tolist(), "bin_edges": bin_edges.tolist()}

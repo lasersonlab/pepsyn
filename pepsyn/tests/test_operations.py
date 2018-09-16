@@ -14,7 +14,7 @@
 
 from pytest import raises
 from Bio.Seq import Seq
-from Bio.Alphabet.IUPAC import protein, unambiguous_dna
+from Bio.Alphabet.IUPAC import protein, unambiguous_dna, ambiguous_dna
 import numpy as np
 
 from pepsyn.operations import (
@@ -24,6 +24,9 @@ from pepsyn.operations import (
     recode_sites_from_cds,
     x_to_ggsg,
     disambiguate_iupac_aa,
+    disambiguate_iupac_dna,
+    num_disambiguated_iupac_aa,
+    num_disambiguated_iupac_dna,
     pad_ggsg,
     ctermpep,
 )
@@ -343,6 +346,57 @@ class TestProteinDisambig(object):
         proteins = set(disambiguate_iupac_aa(ambig))
         assert len(proteins) == 4
         assert proteins == {"AALLAA", "AALIAA", "AAILAA", "AAIIAA"}
+
+
+class TestDNADisambig(object):
+
+    def test_unambig_dna(self):
+        unambig_dna_seq = Seq("AGCTTCGAAATGCT", unambiguous_dna)
+        seqs = list(disambiguate_iupac_dna(unambig_dna_seq))
+        assert len(seqs) == 1
+        assert seqs[0] == unambig_dna_seq
+
+    def test_ambig_dna(self):
+        ambig_dna_seq = Seq("NGCTT", ambiguous_dna)
+        seqs = set(disambiguate_iupac_dna(ambig_dna_seq))
+        assert len(seqs) == 4
+        assert seqs == {"AGCTT", "CGCTT", "GGCTT", "TGCTT"}
+
+
+class TestNumDisambig(object):
+
+    def test_protein(self):
+        assert num_disambiguated_iupac_aa(Seq("AAAAA", protein)) == 1
+        assert num_disambiguated_iupac_aa(Seq("AABAA", protein)) == 2
+        assert num_disambiguated_iupac_aa(Seq("AAXAA", protein)) == 20
+        assert num_disambiguated_iupac_aa(Seq("AAZAA", protein)) == 2
+        assert num_disambiguated_iupac_aa(Seq("AAJAA", protein)) == 2
+        assert num_disambiguated_iupac_aa(Seq("AAUAA", protein)) == 1
+        assert num_disambiguated_iupac_aa(Seq("AAOAA", protein)) == 1
+        assert num_disambiguated_iupac_aa(Seq("AAZAB", protein)) == 4
+        assert num_disambiguated_iupac_aa(Seq("XAZAA", protein)) == 40
+        assert num_disambiguated_iupac_aa("AABAA") == 2
+
+    def test_dna(self):
+        assert num_disambiguated_iupac_dna(Seq("ACGT", ambiguous_dna)) == 1
+        assert num_disambiguated_iupac_dna(Seq("A", ambiguous_dna)) == 1
+        assert num_disambiguated_iupac_dna(Seq("B", ambiguous_dna)) == 3
+        assert num_disambiguated_iupac_dna(Seq("C", ambiguous_dna)) == 1
+        assert num_disambiguated_iupac_dna(Seq("D", ambiguous_dna)) == 3
+        assert num_disambiguated_iupac_dna(Seq("G", ambiguous_dna)) == 1
+        assert num_disambiguated_iupac_dna(Seq("H", ambiguous_dna)) == 3
+        assert num_disambiguated_iupac_dna(Seq("K", ambiguous_dna)) == 2
+        assert num_disambiguated_iupac_dna(Seq("M", ambiguous_dna)) == 2
+        assert num_disambiguated_iupac_dna(Seq("N", ambiguous_dna)) == 4
+        assert num_disambiguated_iupac_dna(Seq("R", ambiguous_dna)) == 2
+        assert num_disambiguated_iupac_dna(Seq("S", ambiguous_dna)) == 2
+        assert num_disambiguated_iupac_dna(Seq("T", ambiguous_dna)) == 1
+        assert num_disambiguated_iupac_dna(Seq("V", ambiguous_dna)) == 3
+        assert num_disambiguated_iupac_dna(Seq("W", ambiguous_dna)) == 2
+        assert num_disambiguated_iupac_dna(Seq("X", ambiguous_dna)) == 4
+        assert num_disambiguated_iupac_dna(Seq("Y", ambiguous_dna)) == 2
+        assert num_disambiguated_iupac_dna(Seq("ACYGT", ambiguous_dna)) == 2
+        assert num_disambiguated_iupac_dna(Seq("NCYGT", ambiguous_dna)) == 8
 
 
 class TestPad(object):
