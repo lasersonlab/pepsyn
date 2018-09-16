@@ -6,7 +6,7 @@ install:
   - pip install black pytest pytest-cov coveralls
   - python setup.py install
 script:
-  - pytest --cov=pepsyn
+  - python -m pytest --cov=pepsyn
   - black --check -v .
 after_success:
   - coveralls
