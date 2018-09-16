@@ -1,3 +1,4 @@
 [run]
 branch: True
-omit: pepsyn/tests*
+omit: pepsyn/tests*,
+      pepsyn/_version.py
