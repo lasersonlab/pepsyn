@@ -349,7 +349,6 @@ class TestProteinDisambig(object):
 
 
 class TestDNADisambig(object):
-
     def test_unambig_dna(self):
         unambig_dna_seq = Seq("AGCTTCGAAATGCT", unambiguous_dna)
         seqs = list(disambiguate_iupac_dna(unambig_dna_seq))
@@ -364,7 +363,6 @@ class TestDNADisambig(object):
 
 
 class TestNumDisambig(object):
-
     def test_protein(self):
         assert num_disambiguated_iupac_aa(Seq("AAAAA", protein)) == 1
         assert num_disambiguated_iupac_aa(Seq("AABAA", protein)) == 2
