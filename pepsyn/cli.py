@@ -80,28 +80,48 @@ argument_input = argument("input", type=File("r"))
 argument_output = argument("output", type=File("w"))
 
 
-@cli.command()
+@cli.command(short_help="tile across input sequences")
 @argument_input
 @argument_output
 @option("--length", "-l", type=int, help="Length of output oligos")
 @option("--overlap", "-p", type=int, help="Overlap of oligos")
 def tile(input, output, length, overlap):
-    """tile a set of sequences"""
+    """Generate short (overlapping) sequence tiles from input sequences.
+
+    Each sequence in the fasta input is converted into short tiles with given
+    length and overlap and written out in fasta format.
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    Note: this tool drops "incomplete/short" last tiles if the length/overlap
+    setting does not allow a tiling to perfectly cover a sequence. We recommend
+    using ``ctermpep`` to explicitly capture the last tiles.
+
+    """
     for (name, seq, qual) in tqdm(readfq(input), desc="tile", unit="seq"):
         for (start, end, t) in tile_op(seq, length, overlap):
             output_title = f"{name}|{start}-{end}"
             print(f">{output_title}\n{t}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="extract C-terminal peptide")
 @argument_input
 @argument_output
 @option("--length", "-l", type=int, help="Length of output C-terminal oligo")
 @option("--add-stop", "-s", is_flag=True, help="Add a stop codon to peptide")
 def ctermpep(input, output, length, add_stop):
-    """extract C-terminal peptide (AA alphabets)
+    """Extract the C-terminal peptide from each input sequence
 
-    will return entirety of seqs shorter than length
+    If an input sequence is shorter than the specified length, it will write
+    out the entirety of the sequence.
+
+    With the ``--add-stop`` option, an asterisk is appended to the input
+    sequence and counts as one of the amino acids in terms of peptide length.
+    For example, if requesting 56-aa peptides with a stop codon, the output
+    will code for 55 amino acids and the stop.
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
     """
     for (name, seq, qual) in tqdm(readfq(input), desc="ctermpep", unit="seq"):
         oligo = cterm_oligo(seq, length, add_stop=add_stop)
@@ -111,37 +131,48 @@ def ctermpep(input, output, length, add_stop):
         print(f">{output_title}\n{oligo}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="strip stop codons from protein sequences")
 @argument_input
 @argument_output
 def stripstop(input, output):
-    """strip stop codons from end of protein sequence"""
+    """Strip stop "codons" from end of input protein sequences.
+
+    Stop codons are assumed to be represented as "*".
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
     for (name, seq, qual) in readfq(input):
         seq = seq.rstrip("*")
         print(f">{name}\n{seq}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="filter out protein sequences with stops")
 @argument_input
 @argument_output
 def filterstop(input, output):
-    """filter out sequences that contain stop codons (*)"""
+    """Filter out input sequences that contain stop codons (*).
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
     for (name, seq, qual) in readfq(input):
         if "*" in seq:
             continue
-        seq = seq.rstrip("*")
         print(f">{name}\n{seq}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="size select sequences")
 @argument_input
 @argument_output
-@option("-m", "--min-len", type=int, help="Min length of sequence to keep")
+@option("-m", "--min-len", type=int, default=0, help="Min length of sequence to keep")
 @option("-M", "--max-len", type=int, help="Max length of sequence to keep")
 def filterlen(input, output, min_len, max_len):
-    """filter sequences of a given length"""
-    if min_len is None:
-        min_len = 0
+    """Filter sequences of a given length.
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
     if max_len is None:
         max_len = inf
     for (name, seq, qual) in readfq(input):
@@ -152,21 +183,21 @@ def filterlen(input, output, min_len, max_len):
         print(f">{name}\n{seq}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="pad peptide to specified length")
 @argument_input
 @argument_output
 @option("--length", "-l", type=int, help="Target length for peptide")
-@option("--n-term", "-n", "terminus", flag_value="N", help="Pad the N-terminus")
 @option(
-    "--c-term",
-    "-c",
-    "terminus",
-    flag_value="C",
-    default=True,
-    help="Pad the C-terminus",
+    "--n-term/--c-term", "-n/-c", "nterm", help="C- or N- terminus [default: C-term]"
 )
-def pad(input, output, length, terminus):
-    """pad peptide to target length with GSGG"""
+def pad(input, output, length, nterm):
+    """Pad protein sequence to a specified length by adding amino acids in the
+    pattern of "GSGG".
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
+    terminus = "N" if nterm else "C"
     for (name, seq, qual) in readfq(input):
         padded = pad_ggsg(seq, length, terminus)
         pad_len = len(padded) - len(seq)
@@ -177,46 +208,56 @@ def pad(input, output, length, terminus):
         print(f">{output_title}\n{padded}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="add a prefix to each sequence")
 @argument_input
 @argument_output
 @option("--prefix", "-p", help="DNA sequence to prefix each oligo")
 def prefix(input, output, prefix):
-    """add a prefix to each sequence"""
+    """Add a prefix to each sequence
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
     for (name, seq, qual) in readfq(input):
         newseq = prefix + seq
         print(f">{name}\n{newseq}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="add a suffix to each sequence")
 @argument_input
 @argument_output
 @option("--suffix", "-s", help="DNA sequence to suffix each oligo")
 def suffix(input, output, suffix):
-    """add a suffix to each sequence"""
+    """Add a suffix to each sequence
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
     for (name, seq, qual) in readfq(input):
         newseq = seq + suffix
         print(f">{name}\n{newseq}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="clip/truncate each sequence")
 @argument_input
 @argument_output
 @option("--left", "-l", default=0, help="number of bases to clip from left")
 @option("--right", "-r", default=0, help="number of bases to clip from right")
 def clip(input, output, left, right):
-    """clip bases from the ends of each sequence"""
+    """Clip/truncate bases from the ends of each sequence
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
     for (name, seq, qual) in readfq(input):
         stop = len(seq) - right
         print(f">{name}\n{seq[left:stop]}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="translate DNA to protein sequences")
 @argument_input
 @argument_output
-@option(
-    "--codon-table", "-t", default="Standard", help="ONLY STANDARD TABLE IMPLEMENTED"
-)
+@option("--codon-table", "-t", default="Standard", help="Specify the codon table")
 @option(
     "--truncate-at-stop",
     "-x",
@@ -224,7 +265,12 @@ def clip(input, output, left, right):
     help="Truncate translation at first stop codon",
 )
 def translate(input, output, codon_table, truncate_at_stop):
-    """translate nucleotide sequences into protein"""
+    """Translate nucleotide sequences into protein
+
+    Note: only the Standard codon table is currently implemented.
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+    """
     for seqrecord in tqdm(SeqIO.parse(input, "fasta"), desc="translate", unit="seq"):
         aa_id = seqrecord.id
         aa_seq = seqrecord.seq.translate(table=codon_table)
@@ -233,13 +279,11 @@ def translate(input, output, codon_table, truncate_at_stop):
         print_fasta(SeqRecord(aa_seq, aa_id, description=""), output)
 
 
-@cli.command()
+@cli.command(short_help="reverse translate protein to DNA sequences")
 @argument_input
 @argument_output
-@option(
-    "--codon-table", "-t", default="Standard", help="ONLY STANDARD TABLE IMPLEMENTED"
-)
-@option("--codon-usage", "-u", default="ecoli", help="ONLY ECOLI IMPLEMENTED")
+@option("--codon-table", "-t", default="Standard", help="Specify the codon table")
+@option("--codon-usage", "-u", default="ecoli", help="Specify the codon usage")
 @option(
     "--sampler",
     default="weighted",
@@ -254,7 +298,17 @@ def translate(input, output, codon_table, truncate_at_stop):
 def revtrans(
     input, output, codon_table, codon_usage, sampler, codon_freq_threshold, amber_only
 ):
-    """reverse translate amino acid sequences into DNA"""
+    """Reverse translate amino acid sequences into DNA
+
+    This operation randomly samples codons for each amino acid, so multiple runs
+    of this tool on the same input can produce different results
+
+    Note: only the Standard codon table is currently implemented.
+    Note: only the E. coli codon usage is currently implemented.
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
     if sampler == "weighted":
         usage = ecoli_codon_usage
         if codon_freq_threshold is not None:
@@ -272,13 +326,13 @@ def revtrans(
         print_fasta(SeqRecord(dna_seq, dna_id, description=""), output)
 
 
-@cli.command()
+@cli.command(short_help="recode DNA sequence")
 @argument_input
 @argument_output
 @option(
     "--site",
     multiple=True,
-    help="Site to remove (e.g., EcoRI, AGCCT); case sens; allow multiple",
+    help="Site to remove (e.g., EcoRI, AGCCT); case sens; allows multiple",
 )
 @option(
     "--clip-left",
@@ -319,7 +373,16 @@ def recodesite(
     codon_freq_threshold,
     amber_only,
 ):
-    """remove site from each sequence's CDS by recoding"""
+    """Recode a DNA sequence to remove a particular site (e.g., restriction site)
+
+    The site needs to be recognized by Biopython, or it will be treated as a DNA
+    sequence. The clipping options should determine the boundaries of the coding
+    sequence, which will correspond to the part of the sequence that is
+    "recodable".
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
     if sampler == "weighted":
         usage = ecoli_codon_usage
         if codon_freq_threshold is not None:
@@ -345,11 +408,15 @@ def recodesite(
         print_fasta(SeqRecord(seq, id_, description=""), output)
 
 
-@cli.command()
+@cli.command(short_help="replace Xs with linker")
 @argument_input
 @argument_output
 def x2ggsg(input, output):
-    """replace stretches of Xs with Serine-Glycine linker (GGSG pattern)"""
+    """Replace stretches of Xs with Serine-Glycine linker (in a GGSG pattern)
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
     for (name, seq, qual) in readfq(input):
         replacement = x_to_ggsg(seq)
         if replacement != seq:
@@ -359,14 +426,27 @@ def x2ggsg(input, output):
         print(f">{output_title}\n{replacement}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="replace ambiguous AAs with unambiguous ones")
 @argument_input
 @argument_output
 def disambiguateaa(input, output):
-    """replace ambiguous (IUPAC) AAs with unambiguous ones (e.g. Z => E/Q)
+    """Replace IUPAC ambiguous amino acids with unambiguous ones
 
-    B => DN, X => ACDEFGHIKLMNPQRSTVWY, Z => EQ, J => LI,
-    U => C (selenocysteine), O => K (pyrrolysine)
+    Specifically, make the following replacements:
+    B => DN
+    X => ACDEFGHIKLMNPQRSTVWY
+    Z => EQ
+    J => LI,
+    U => C (selenocysteine)
+    O => K (pyrrolysine)
+
+    If there are multiple possible replacements, this operation will output a
+    sequence for each possible option. Use caution with sequences that are
+    highly ambiguous (e.g., with many Xs), as in this case a single sequence
+    could lead to an explosion in the output.
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
     """
     for (name, ambig, qual) in readfq(input):
         n = num_disambiguated_iupac_aa(ambig)
@@ -378,7 +458,7 @@ def disambiguateaa(input, output):
             print(f">{name}\n{unambig}", file=output)
 
 
-@cli.command()
+@cli.command(short_help="find DNA site in sequences")
 @argument_input
 @option("--site", help="Site to find (e.g., EcoRI, AGCCT); case sensitive")
 @option(
@@ -394,7 +474,20 @@ def disambiguateaa(input, output):
     help="Number of bases to clip from end of sequence to get to CDS",
 )
 def findsite(input, site, clip_left, clip_right):
-    """find locations of a site"""
+    """Find locations of a site in a DNA sequences
+
+    If a sequence matches the specified site, write out its name and location.
+    Used as a diagnostic to confirm that a particular DNA site (e.g.,
+    restriction enzyme) is absent from a set of sequences. Because there may be
+    adaptor sequences that contain such a site by design, the clipping option
+    allows the search to be restricted. Note that a site is searched if it
+    overlaps with the valid region even by one base (i.e., a site can match if
+    it is mostly outside the clipped region, as long as it overlaps the target
+    search region).
+
+    INPUT is a path to fasta file or "-" to specify STDIN.
+
+    """
     query = str(site2dna(site))
     for (name, seq, qual) in readfq(input):
         start = clip_left
@@ -404,16 +497,20 @@ def findsite(input, site, clip_left, clip_right):
             print(f"{name}|{site}|{idx + start}", file=sys.stdout)
 
 
-@cli.command()
+@cli.command(short_help="build de Bruijn graph")
 @argument_input
 @argument("output_path", type=Path(exists=False))
 @option("-k", "--kmer-size", type=int, required=True, help="k-mer size")
 def builddbg(input, output_path, kmer_size):
-    """build a de bruijn graph
+    """Build a de bruijn graph on a set of protein sequences
 
-    ignores input sequences shorter than the kmer size
+    This process ignores input sequences shorter than the specified kmer size.
 
-    output path with .gz will write compressed data
+    If the output path ends with .gz, the output will be compressed.
+
+    INPUT is a path to fasta file or "-" to specify STDIN. OUTPUT_PATH must
+    point to a valid path.
+
     """
     try:
         import networkx as nx
@@ -426,7 +523,7 @@ def builddbg(input, output_path, kmer_size):
     nx.write_gpickle(dbg, output_path)
 
 
-@cli.command()
+@cli.command(short_help="sample tiles from de Bruijn graph")
 @argument_input
 @argument_output
 @option("-t", "--tile-size", type=int, required=True, help="tile size")
@@ -455,11 +552,19 @@ def builddbg(input, output_path, kmer_size):
 def greedykmercov(
     input, output, tile_size, dbg_path, kmer_cov, num_tiles, preselected_tiles_path
 ):
-    """select protein tiles by maximizing k-mer coverage on de bruijn graph
+    """Select protein tiles from de Bruijn graph by maximizing k-mer coverage
 
-    each tile is a fragment of an observed input ORF
-    ORFS shorter than tile-size are sampled, but
-    ORFs shorter than kmer-size are ignored
+    Each tile is a fragment of an observed input ORF. Either the total number of
+    output tiles can be specified, or the average target k-mer coverage. If
+    there is already a pre-selected set of tiles chosen through some other
+    method, specifying them will initialize the de Bruijn graph to reflect the
+    preexisting k-mer coverage.
+
+    NOTE: ORFS shorter than tile-size are sampled, but ORFs shorter than
+    kmer-size are ignored. (Use pepsyn filterlen to select short tiles.)
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
     """
     # test input/context
     try:
@@ -579,7 +684,7 @@ def greedykmercov(
                 )
 
 
-@cli.command()
+@cli.command(short_help="compute stats on de Bruijn graph")
 @option(
     "-d",
     "--dbg-path",
@@ -609,7 +714,13 @@ def greedykmercov(
     help="output YAML path (default stdout)",
 )
 def dbgtilesummary(dbg_path, tiles, orfs, output):
-    """compute stats from de bruin graph"""
+    """Compute summary statistics on a de Bruin graph (DBG)
+
+    The output is written out as a YAML. This operation computes statistics of
+    an ORF set and a tile set relative to a DBG, which is why it requires those
+    files too.
+
+    """
     try:
         import networkx as nx
         from pepsyn.dbg import dbg_stats
@@ -628,7 +739,7 @@ def dbgtilesummary(dbg_path, tiles, orfs, output):
     print(yaml.dump(stats), file=output)
 
 
-@cli.command()
+@cli.command(short_help="compute stats on peptides")
 @option(
     "-p",
     "--tiles",
@@ -651,9 +762,11 @@ def dbgtilesummary(dbg_path, tiles, orfs, output):
     help="output YAML path (default stdout)",
 )
 def tilesummary(tiles, orfs, output):
-    """compute ORF stats
+    """Compute summary statistics on a set of peptide tiles
 
-    can be used on raw or cleaned orfs
+    These statistics are computed relative to a set of ORFs. This operation can
+    be used on raw or cleaned ORFs.
+
     """
     with open(orfs, "r") as ip:
         orfs = {name: seq for (name, seq, qual) in readfq(ip)}
@@ -663,13 +776,16 @@ def tilesummary(tiles, orfs, output):
     print(yaml.dump(stats), file=output)
 
 
-@cli.command()
+@cli.command(short_help="compute stats on ORFs")
 @argument_input
 @argument_output
 def orfsummary(input, output):
-    """compute ORF stats
+    """Compute summary statistics on a set of ORFs
 
-    can be used on raw or cleaned orfs
+    Can be used on raw or cleaned orfs.
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
     """
     orfs = {name: seq for (name, seq, qual) in readfq(input)}
     stats = orf_stats(orfs)
