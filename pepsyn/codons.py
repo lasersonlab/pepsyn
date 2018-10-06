@@ -58,8 +58,8 @@ def zero_non_amber_stops(usage):
     """Returns CodonUsage that zeros-out non-amber stop codons"""
     # TODO: it doesn't take into account alphabet
     freq = usage.freq.copy()
-    freq[ochre_codon] = 0.
-    freq[opal_codon] = 0.
+    freq[ochre_codon] = 0.0
+    freq[opal_codon] = 0.0
     return CodonUsage(freq)
 
 
@@ -73,7 +73,7 @@ def zero_low_freq_codons(usage, table, freq_threshold=0.01):
             continue
         rare_codons = curr_codons - common_codons
         for c in rare_codons:
-            freq[Seq(c, unambiguous_dna)] = 0.
+            freq[Seq(c, unambiguous_dna)] = 0.0
     return CodonUsage(freq)
 
 

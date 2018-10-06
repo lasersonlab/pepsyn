@@ -355,7 +355,7 @@ def tile_stats(orfs, tiles):
     orf_coverages = {}
     for (orf, seq) in orfs.items():
         orf_residues = len(seq)
-        tile_residues = 0.
+        tile_residues = 0.0
         if tile_prefixes.has_subtrie(orf) or (orf in tile_prefixes):
             for tile in tile_prefixes.keys(orf):
                 tile_residues += len(tiles[tile])
