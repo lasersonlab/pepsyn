@@ -14,14 +14,13 @@
 
 import warnings
 from copy import copy
-from math import fsum
 from itertools import product
+from math import fsum
 
 import numpy as np
-from Bio.Seq import Seq
 from Bio.Alphabet.IUPAC import unambiguous_dna
 from Bio.Data.CodonTable import standard_dna_table
-
+from Bio.Seq import Seq
 
 amber_codon = Seq("TAG", unambiguous_dna)
 ochre_codon = Seq("TAA", unambiguous_dna)
@@ -139,6 +138,7 @@ class FreqWeightedCodonSampler(CodonSampler):
         """
         i = np.random.choice(range(len(self.aa2codons[aa])), p=self.aa2p[aa])
         return self.aa2codons[aa][i]
+
 
 with warnings.catch_warnings():
     # to supress biopythons warnings on hashing Seq objects

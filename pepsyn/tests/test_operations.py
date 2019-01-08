@@ -14,31 +14,30 @@
 
 import warnings
 
-from pytest import raises
-from Bio.Seq import Seq
-from Bio.Alphabet.IUPAC import protein, unambiguous_dna, ambiguous_dna
 import numpy as np
+from Bio.Alphabet.IUPAC import ambiguous_dna, protein, unambiguous_dna
+from Bio.Seq import Seq
+from pytest import raises
 
-from pepsyn.operations import (
-    tile,
-    reverse_translate,
-    recode_site_from_cds,
-    recode_sites_from_cds,
-    x_to_ggsg,
-    disambiguate_iupac_aa,
-    disambiguate_iupac_dna,
-    num_disambiguated_iupac_aa,
-    num_disambiguated_iupac_dna,
-    pad_ggsg,
-    ctermpep,
-)
 from pepsyn.codons import (
     FreqWeightedCodonSampler,
     UniformCodonSampler,
     ecoli_codon_usage,
 )
 from pepsyn.error import PepsynError
-
+from pepsyn.operations import (
+    ctermpep,
+    disambiguate_iupac_aa,
+    disambiguate_iupac_dna,
+    num_disambiguated_iupac_aa,
+    num_disambiguated_iupac_dna,
+    pad_ggsg,
+    recode_site_from_cds,
+    recode_sites_from_cds,
+    reverse_translate,
+    tile,
+    x_to_ggsg,
+)
 
 protein_seq = Seq("METMSDYSKEVSEALSALRGELSALSAAISNTVRAGSYSAPVAKDCKAGHCDSKAVL", protein)
 short_protein_seq = Seq("METMSD", protein)
@@ -126,7 +125,7 @@ class TestTile(object):
 
 class TestReverseTranslate(object):
     def test_freq_weighted_sampler(self):
-        with warnings.catch_warnings(): # biopython Seq.__hash__
+        with warnings.catch_warnings():  # biopython Seq.__hash__
             warnings.simplefilter("ignore")
             codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
         dna_seq = reverse_translate(all_aa_protein_seq, codon_sampler)
@@ -145,7 +144,7 @@ class TestSiteRemoval(object):
     cds_end = 28
     EcoRI = Seq("GAATTC", unambiguous_dna)
     HindIII = Seq("AAGCTT", unambiguous_dna)
-    with warnings.catch_warnings(): # biopython Seq.__hash__
+    with warnings.catch_warnings():  # biopython Seq.__hash__
         warnings.simplefilter("ignore")
         codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
 

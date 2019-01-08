@@ -20,16 +20,16 @@ This module should generally operate on Bio.Seq.Seq objects.
 import re
 from itertools import cycle
 
-from Bio.Seq import Seq
 from Bio.Data.IUPACData import (
-    protein_letters,
     ambiguous_dna_values,
+    protein_letters,
     unambiguous_dna_letters,
 )
+from Bio.Seq import Seq
 from pygtrie import CharTrie
 
-from pepsyn.util import compute_int_hist, compute_float_hist
 from pepsyn.error import PepsynError
+from pepsyn.util import compute_float_hist, compute_int_hist
 
 ambiguous_protein_values = {
     "B": "DN",
