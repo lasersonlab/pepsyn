@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
+
 from pytest import raises
 from Bio.Seq import Seq
 from Bio.Alphabet.IUPAC import protein, unambiguous_dna, ambiguous_dna
@@ -124,7 +126,9 @@ class TestTile(object):
 
 class TestReverseTranslate(object):
     def test_freq_weighted_sampler(self):
-        codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
+        with warnings.catch_warnings(): # biopython Seq.__hash__
+            warnings.simplefilter("ignore")
+            codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
         dna_seq = reverse_translate(all_aa_protein_seq, codon_sampler)
         assert dna_seq.translate(table=codon_sampler.table) == all_aa_protein_seq
 
@@ -141,7 +145,9 @@ class TestSiteRemoval(object):
     cds_end = 28
     EcoRI = Seq("GAATTC", unambiguous_dna)
     HindIII = Seq("AAGCTT", unambiguous_dna)
-    codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
+    with warnings.catch_warnings(): # biopython Seq.__hash__
+        warnings.simplefilter("ignore")
+        codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
 
     def test_no_site(self):
         dna_seq = Seq("GAGATCCGGTCCATATCTTATTCAACGCAAGTTGTTAT", unambiguous_dna)
@@ -343,7 +349,8 @@ class TestProteinDisambig(object):
 
     def test_adjacent_ambig(self):
         ambig = Seq("AAJJAA", protein)
-        proteins = set(disambiguate_iupac_aa(ambig))
+        # map to str here bc of annoying biopython warning when hashing a Seq
+        proteins = set(map(str, disambiguate_iupac_aa(ambig)))
         assert len(proteins) == 4
         assert proteins == {"AALLAA", "AALIAA", "AAILAA", "AAIIAA"}
 
@@ -357,7 +364,8 @@ class TestDNADisambig(object):
 
     def test_ambig_dna(self):
         ambig_dna_seq = Seq("NGCTT", ambiguous_dna)
-        seqs = set(disambiguate_iupac_dna(ambig_dna_seq))
+        # map to str here bc of annoying biopython warning when hashing a Seq
+        seqs = set(map(str, disambiguate_iupac_dna(ambig_dna_seq)))
         assert len(seqs) == 4
         assert seqs == {"AGCTT", "CGCTT", "GGCTT", "TGCTT"}
 

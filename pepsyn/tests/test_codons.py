@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import warnings
 from math import isclose
 
 from Bio.Data.CodonTable import standard_dna_table
@@ -28,15 +29,18 @@ from pepsyn.codons import (
 
 class TestUsageManipulation(object):
     def test_zero_non_amber(self):
-        zeroed_weight = (
-            ecoli_codon_usage.freq[ochre_codon] + ecoli_codon_usage.freq[opal_codon]
-        )
-        new_usage = zero_non_amber_stops(ecoli_codon_usage)
-        for codon in new_usage.freq:
-            if codon == ochre_codon or codon == opal_codon:
-                continue
-            inflated_freq = ecoli_codon_usage.freq[codon] / (1 - zeroed_weight)
-            new_freq = new_usage.freq[codon]
-            assert isclose(new_freq, inflated_freq)
-        assert new_usage.freq[ochre_codon] == 0
-        assert new_usage.freq[opal_codon] == 0
+        with warnings.catch_warnings(): # biopython Seq.__hash__
+            warnings.simplefilter("ignore")
+
+            zeroed_weight = (
+                ecoli_codon_usage.freq[ochre_codon] + ecoli_codon_usage.freq[opal_codon]
+            )
+            new_usage = zero_non_amber_stops(ecoli_codon_usage)
+            for codon in new_usage.freq:
+                if codon == ochre_codon or codon == opal_codon:
+                    continue
+                inflated_freq = ecoli_codon_usage.freq[codon] / (1 - zeroed_weight)
+                new_freq = new_usage.freq[codon]
+                assert isclose(new_freq, inflated_freq)
+            assert new_usage.freq[ochre_codon] == 0
+            assert new_usage.freq[opal_codon] == 0
