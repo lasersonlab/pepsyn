@@ -18,5 +18,7 @@ echo ""; echo "Running black"; echo ""
 black $BLACK_CHECK_FLAG . || FAILED=1
 
 if [ "$FAILED" -ne 0 ]; then
+    isort -m 3 -i "    " -tc -rc --diff pepsyn
+    black --diff .
     exit 1
 fi
