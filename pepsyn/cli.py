@@ -14,54 +14,53 @@
 
 import os
 import sys
-from os.path import join as pjoin
-from math import ceil, inf, floor, log10
 from collections import Counter
 from logging import captureWarnings
+from math import ceil, floor, inf, log10
+from os.path import join as pjoin
 
-# biopython has a bunch of annoying warnings bc Seq comparisons changed
-captureWarnings(True)
-
-from click import (
-    group,
-    command,
-    option,
-    argument,
-    File,
-    Choice,
-    Path,
-    version_option,
-    Abort,
-    UsageError,
-)
-from Bio import SeqIO
-from Bio.SeqRecord import SeqRecord
-from Bio.Data.CodonTable import standard_dna_table
-from tqdm import tqdm, trange
 import yaml
+from Bio import SeqIO
+from Bio.Data.CodonTable import standard_dna_table
+from Bio.SeqRecord import SeqRecord
+from click import (
+    Abort,
+    Choice,
+    File,
+    Path,
+    UsageError,
+    argument,
+    command,
+    group,
+    option,
+    version_option,
+)
+from tqdm import tqdm, trange
 
 from pepsyn import __version__
-from pepsyn.operations import (
-    reverse_translate,
-    recode_site_from_cds,
-    recode_sites_from_cds,
-    x_to_ggsg,
-    disambiguate_iupac_aa,
-    tile as tile_op,
-    ctermpep as cterm_oligo,
-    pad_ggsg,
-    tile_stats,
-    orf_stats,
-    num_disambiguated_iupac_aa,
-)
 from pepsyn.codons import (
     FreqWeightedCodonSampler,
     UniformCodonSampler,
     ecoli_codon_usage,
-    zero_non_amber_stops,
     zero_low_freq_codons,
+    zero_non_amber_stops,
 )
-from pepsyn.util import site2dna, sliding_window, readfq
+from pepsyn.operations import ctermpep as cterm_oligo
+from pepsyn.operations import (
+    disambiguate_iupac_aa,
+    num_disambiguated_iupac_aa,
+    orf_stats,
+    pad_ggsg,
+    recode_site_from_cds,
+    recode_sites_from_cds,
+    reverse_translate,
+)
+from pepsyn.operations import tile as tile_op
+from pepsyn.operations import tile_stats, x_to_ggsg
+from pepsyn.util import readfq, site2dna, sliding_window
+
+# biopython has a bunch of annoying warnings bc Seq comparisons changed
+captureWarnings(True)
 
 
 def print_fasta(sr, out):

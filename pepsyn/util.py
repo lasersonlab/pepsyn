@@ -16,10 +16,10 @@ import collections
 import itertools
 
 import numpy as np
-from Bio.Seq import Seq
 from Bio.Alphabet import _verify_alphabet
 from Bio.Alphabet.IUPAC import unambiguous_dna
 from Bio.Restriction.Restriction import enzymedict
+from Bio.Seq import Seq
 
 
 def site2dna(site):

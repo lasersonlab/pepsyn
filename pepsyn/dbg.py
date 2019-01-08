@@ -15,11 +15,11 @@
 
 from math import ceil
 
-import numpy as np
 import networkx as nx
+import numpy as np
 from tqdm import tqdm
 
-from pepsyn.util import readfq, compute_int_hist
+from pepsyn.util import compute_int_hist, readfq
 
 # some utilities for working with graphs
 

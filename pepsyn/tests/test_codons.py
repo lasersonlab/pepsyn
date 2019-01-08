@@ -18,18 +18,18 @@ from math import isclose
 from Bio.Data.CodonTable import standard_dna_table
 
 from pepsyn.codons import (
-    zero_non_amber_stops,
-    zero_low_freq_codons,
-    ecoli_codon_usage,
     amber_codon,
+    ecoli_codon_usage,
     ochre_codon,
     opal_codon,
+    zero_low_freq_codons,
+    zero_non_amber_stops,
 )
 
 
 class TestUsageManipulation(object):
     def test_zero_non_amber(self):
-        with warnings.catch_warnings(): # biopython Seq.__hash__
+        with warnings.catch_warnings():  # biopython Seq.__hash__
             warnings.simplefilter("ignore")
 
             zeroed_weight = (
