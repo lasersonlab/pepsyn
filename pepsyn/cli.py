@@ -71,7 +71,7 @@ def print_fasta(sr, out):
 @group(context_settings={"help_option_names": ["-h", "--help"]})
 @version_option(__version__)
 def cli():
-    """pepsyn -- peptide synthesis design"""
+    """peptide synthesis design"""
     pass
 
 
