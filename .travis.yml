@@ -6,7 +6,6 @@ install:
   - python setup.py install
 script:
   - python -m pytest --cov=pepsyn
-  - isort --check-only --recursive pepsyn
-  - black --check -v .
+  - ./format.sh check
 after_success:
   - coveralls
