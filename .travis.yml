@@ -9,3 +9,6 @@ script:
   - ./format.sh check
 after_success:
   - coveralls
+notifications:
+  email:
+    - pepsyn@lasersonlab.org
