@@ -594,14 +594,19 @@ def greedykmercov(
         tiles_remaining = num_tiles
 
     # load preselected tiles
-    preselected_tiles = [seq for (name, seq, qual) in readfq(preselected_tiles_path)]
-    preselected_kmer_counts = Counter(
-        [
-            kmer
-            for tile in preselected_tiles
-            for kmer in gen_kmers(tile, kmer_size, yield_short=True)
+    if preselected_tiles_path:
+        preselected_tiles = [
+            seq for (name, seq, qual) in readfq(preselected_tiles_path)
         ]
-    )
+        preselected_kmer_counts = Counter(
+            [
+                kmer
+                for tile in preselected_tiles
+                for kmer in gen_kmers(tile, kmer_size, yield_short=True)
+            ]
+        )
+    else:
+        preselected_kmer_counts = Counter()
 
     # process each graph component separately
     component_iter = tqdm(
