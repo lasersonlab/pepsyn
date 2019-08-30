@@ -347,7 +347,9 @@ def tile_stats(orfs, tiles):
         orf_prefixes[name] = True
     # ensure that no ORF name is a prefix for a different valid ORF
     for name in orfs:
-        assert len(orf_prefixes.keys(name)) == 1
+        if len(orf_prefixes.keys(name)) != 1:
+            print(orf_prefixes.keys(name))
+            raise ValueError("some ORF name is a prefix for a different valid ORF")
     tile_prefixes = CharTrie()
     for name in tiles:
         tile_prefixes[name] = True
