@@ -657,10 +657,12 @@ def greedykmercov(
             num_component_tiles = ceil(
                 len(component) * kmer_cov / (tile_size - kmer_size + 1)
             )
+            num_component_tiles = min(num_component_tiles, len(candidate_tiles))
         if num_tiles:
             num_component_tiles = ceil(
                 len(component) / kmers_remaining * tiles_remaining
             )
+            num_component_tiles = min(num_component_tiles, len(candidate_tiles))
             kmers_remaining -= len(component)
             tiles_remaining -= num_component_tiles
 
