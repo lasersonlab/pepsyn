@@ -182,6 +182,26 @@ def filterlen(input, output, min_len, max_len):
         print(f">{name}\n{seq}", file=output)
 
 
+@cli.command(short_help="filter out duplicate sequences")
+@argument_input
+@argument_output
+def uniq(input, output):
+    """Filter out duplicate sequences.
+
+    Only takes account of the sequences themselves. Arbitrarily picks one. This
+    requires loading the entire file into RAM.
+
+    INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
+
+    """
+    seqs = {}
+    for (name, seq, qual) in readfq(input):
+        if seq not in seqs:
+            seqs[seq] = name
+    for (seq, name) in seqs.items():
+        print(f">{name}\n{seq}", file=output)
+
+
 @cli.command(short_help="pad peptide to specified length")
 @argument_input
 @argument_output
@@ -562,6 +582,11 @@ def greedykmercov(
     NOTE: ORFS shorter than tile-size are sampled, but ORFs shorter than
     kmer-size are ignored. (Use pepsyn filterlen to select short tiles.)
 
+    Preselected tiles are given to this command to keep it from choosing the
+    tile again. This does not affect the number of tiles output, however, nor
+    their distribution across the DBG components when ignoring the preselected
+    tiles.
+
     INPUT and OUTPUT are paths to fasta files or "-" to specify STDIN/STDOUT.
 
     """
@@ -606,6 +631,7 @@ def greedykmercov(
             ]
         )
     else:
+        preselected_tiles = []
         preselected_kmer_counts = Counter()
 
     # process each graph component separately
@@ -620,7 +646,7 @@ def greedykmercov(
 
         # generate all candidate tiles
         tile_to_name = {}
-        for name in tqdm(component_orfs, desc="generating tiles"):
+        for name in component_orfs:
             # special case short orfs
             if len(orfs[name]) < tile_size:
                 tile_to_name.setdefault(orfs[name], []).append(
@@ -629,12 +655,13 @@ def greedykmercov(
             for (i, j, tile) in tile_op(orfs[name], tile_size, tile_size - 1):
                 tile_to_name.setdefault(tile, []).append((name, i, j))
         candidate_tiles = list(tile_to_name.keys())
+        tile_to_idx = dict([(tile, i) for (i, tile) in enumerate(candidate_tiles)])
 
         # generate init tile scores
         tile_scores = []
         tile_lens = []
         kmer_to_idxs = {}
-        for idx, tile in enumerate(tqdm(candidate_tiles, desc="init tile scores")):
+        for idx, tile in enumerate(candidate_tiles):
             score = 0
             for kmer in set(gen_kmers(tile, kmer_size)):
                 score += dbg.nodes[kmer]["multiplicity"]
@@ -645,29 +672,32 @@ def greedykmercov(
         tile_scores.harden_mask()
         tile_lens = np.asarray(tile_lens)
 
-        # update tile scores with previously selected tiles
+        # update tile scores with previously selected tiles and mask already
+        # chosen tiles
         for kmer in set(preselected_kmer_counts.keys()) & set(kmer_to_idxs.keys()):
             idxs = list(kmer_to_idxs[kmer])
             tile_scores.data[idxs] -= (
                 preselected_kmer_counts[kmer] * dbg.nodes[kmer]["multiplicity"]
             ) / len(tile)
+        for tile in set(preselected_tiles) & set(candidate_tiles):
+            tile_scores[tile_to_idx[tile]] = np.ma.masked
 
-        # set number of tiles for this component
+        # set upper bound on number of tiles for this component
         if kmer_cov:
             num_component_tiles = ceil(
                 len(component) * kmer_cov / (tile_size - kmer_size + 1)
             )
-            num_component_tiles = min(num_component_tiles, len(candidate_tiles))
         if num_tiles:
             num_component_tiles = ceil(
                 len(component) / kmers_remaining * tiles_remaining
             )
-            num_component_tiles = min(num_component_tiles, len(candidate_tiles))
             kmers_remaining -= len(component)
-            tiles_remaining -= num_component_tiles
 
         # choose tiles
-        for _ in trange(num_component_tiles, desc="choosing tiles"):
+        for _ in range(num_component_tiles):
+            # break out early if we've already sampled every tile
+            if tile_scores.mask.sum() == len(tile_scores):
+                break
             idx = tile_scores.argmax()
             tile_scores[idx] = np.ma.masked
             tile = candidate_tiles[idx]
@@ -688,6 +718,7 @@ def greedykmercov(
                 tile_scores.data[idxs] -= (
                     dbg.nodes[kmer]["multiplicity"] / tile_lens[idxs]
                 )
+            tiles_remaining -= 1
 
 
 @cli.command(short_help="compute stats on de Bruijn graph")
