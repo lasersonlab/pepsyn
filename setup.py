@@ -27,6 +27,7 @@ setup(
     cmdclass=versioneer.get_cmdclass(),
     description="Peptide library design",
     long_description=readme(),
+    long_description_content_type="text/markdown",
     url="https://github.com/lasersonlab/pepsyn",
     author="Laserson Lab",
     license="Apache License, Version 2.0",
