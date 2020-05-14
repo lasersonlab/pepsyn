@@ -1,0 +1,2 @@
+.. automodule:: pepsyn.codons
+    :members:
