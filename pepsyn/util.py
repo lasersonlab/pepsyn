@@ -41,7 +41,7 @@ def site2dna(site):
 
 
 def sliding_window(n, seq):
-    """ A sequence of overlapping subsequences
+    """A sequence of overlapping subsequences
 
     Stolen pytoolz impl
     """
