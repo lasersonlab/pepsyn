@@ -26,10 +26,10 @@ from Bio.Data.IUPACData import (
     unambiguous_dna_letters,
 )
 from Bio.Seq import Seq
+from pygtrie import CharTrie
 
 from pepsyn.error import PepsynError
 from pepsyn.util import compute_float_hist, compute_int_hist
-from pygtrie import CharTrie
 
 ambiguous_protein_values = {
     "B": "DN",

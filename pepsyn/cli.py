@@ -533,6 +533,7 @@ def builddbg(input, output_path, kmer_size):
     """
     try:
         import networkx as nx
+
         from pepsyn.dbg import fasta_handle_to_dbg
     except ImportError:
         raise Abort("builddbg requires NetworkX")
@@ -593,6 +594,7 @@ def greedykmercov(
     # test input/context
     try:
         import networkx as nx
+
         from pepsyn.dbg import gen_kmers, setreduce_attr, sum_attr
     except ImportError:
         raise Abort("greedykmercov requires NetworkX")
@@ -760,6 +762,7 @@ def dbgtilesummary(dbg_path, tiles, orfs, output):
     """
     try:
         import networkx as nx
+
         from pepsyn.dbg import dbg_stats
     except ImportError:
         print("dbgtilesummary requires NetworkX", file=sys.stderr)
