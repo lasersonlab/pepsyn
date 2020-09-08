@@ -4,8 +4,7 @@ Peptide library design
 
 **Installation**
 
-`pepsyn` is developed for Python 3.6+ and requires `biopython`.  The CLI uses
-`click`.
+`pepsyn` is developed for Python 3.6+ and requires `biopython>=1.78`.  The CLI uses `click`.
 
 ```bash
 pip install pepsyn

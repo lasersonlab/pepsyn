@@ -18,13 +18,12 @@ from itertools import product
 from math import fsum
 
 import numpy as np
-from Bio.Alphabet.IUPAC import unambiguous_dna
 from Bio.Data.CodonTable import standard_dna_table
 from Bio.Seq import Seq
 
-amber_codon = Seq("TAG", unambiguous_dna)
-ochre_codon = Seq("TAA", unambiguous_dna)
-opal_codon = Seq("TGA", unambiguous_dna)
+amber_codon = Seq("TAG")
+ochre_codon = Seq("TAA")
+opal_codon = Seq("TGA")
 
 
 class CodonUsage(object):
@@ -33,13 +32,10 @@ class CodonUsage(object):
 
         weights does not need to be normalized, but must include all 64 codons
         """
-        self.nucleotide_alphabet = weights.keys().__iter__().__next__().alphabet
+        self.nucleotide_alphabet = standard_dna_table.nucleotide_alphabet
 
         # verify presence of all 64 codons
-        all_64 = {
-            Seq("".join(x), self.nucleotide_alphabet)
-            for x in product(self.nucleotide_alphabet.letters, repeat=3)
-        }
+        all_64 = {Seq("".join(x)) for x in product(self.nucleotide_alphabet, repeat=3)}
         if all_64 != set(weights.keys()):
             raise ValueError("values must include all 64 codons")
 
@@ -67,13 +63,13 @@ def zero_low_freq_codons(usage, table, freq_threshold=0.01):
     """Returns CodonUsage that zeros low-freq codons unless the AA is elim"""
     freq = usage.freq.copy()
     common_codons = {str(c) for (c, f) in freq.items() if f >= freq_threshold}
-    for aa in table.protein_alphabet.letters + "*":
+    for aa in table.protein_alphabet + "*":
         curr_codons = {c for (c, a) in table.forward_table.items() if a == aa}
         if len(common_codons & curr_codons) == 0:
             continue
         rare_codons = curr_codons - common_codons
         for c in rare_codons:
-            freq[Seq(c, unambiguous_dna)] = 0.0
+            freq[Seq(c)] = 0.0
     return CodonUsage(freq)
 
 
@@ -88,10 +84,10 @@ class CodonSampler(object):
         # generate aa -> codon mapping
         self.aa2codons = {}
         for (codon, aa) in self.table.forward_table.items():
-            c = Seq(codon, self.table.nucleotide_alphabet)
+            c = Seq(codon)
             self.aa2codons.setdefault(aa, []).append(c)
         for codon in self.table.stop_codons:
-            c = Seq(codon, self.table.nucleotide_alphabet)
+            c = Seq(codon)
             self.aa2codons.setdefault("*", []).append(c)
 
     def sample_codon(self, aa):
@@ -128,7 +124,7 @@ class FreqWeightedCodonSampler(CodonSampler):
 
         # precalculate amino acid distributions (incl stop codon)
         self.aa2p = {}
-        for aa in self.table.protein_alphabet.letters + "*":
+        for aa in self.table.protein_alphabet + "*":
             unnormed = np.asarray([self.usage.freq[c] for c in self.aa2codons[aa]])
             self.aa2p[aa] = unnormed / unnormed.sum()
 
@@ -147,69 +143,69 @@ with warnings.catch_warnings():
     # http://www.kazusa.or.jp/codon/cgi-bin/showcodon.cgi?species=37762
     ecoli_codon_usage = CodonUsage(
         {
-            Seq("GGG", unambiguous_dna): 12.32,
-            Seq("GGA", unambiguous_dna): 13.61,
-            Seq("GGT", unambiguous_dna): 23.72,
-            Seq("GGC", unambiguous_dna): 20.58,
-            Seq("GAG", unambiguous_dna): 19.37,
-            Seq("GAA", unambiguous_dna): 35.06,
-            Seq("GAT", unambiguous_dna): 33.75,
-            Seq("GAC", unambiguous_dna): 17.86,
-            Seq("GTG", unambiguous_dna): 19.87,
-            Seq("GTA", unambiguous_dna): 13.07,
-            Seq("GTT", unambiguous_dna): 21.56,
-            Seq("GTC", unambiguous_dna): 13.09,
-            Seq("GCG", unambiguous_dna): 21.09,
-            Seq("GCA", unambiguous_dna): 23.00,
-            Seq("GCT", unambiguous_dna): 18.89,
-            Seq("GCC", unambiguous_dna): 21.63,
-            Seq("AGG", unambiguous_dna): 3.96,
-            Seq("AGA", unambiguous_dna): 7.11,
-            Seq("AGT", unambiguous_dna): 13.19,
-            Seq("AGC", unambiguous_dna): 14.27,
-            Seq("AAG", unambiguous_dna): 15.30,
-            Seq("AAA", unambiguous_dna): 37.21,
-            Seq("AAT", unambiguous_dna): 29.32,
-            Seq("AAC", unambiguous_dna): 20.26,
-            Seq("ATG", unambiguous_dna): 23.75,
-            Seq("ATA", unambiguous_dna): 13.33,
-            Seq("ATT", unambiguous_dna): 29.58,
-            Seq("ATC", unambiguous_dna): 19.40,
-            Seq("ACG", unambiguous_dna): 13.64,
-            Seq("ACA", unambiguous_dna): 15.14,
-            Seq("ACT", unambiguous_dna): 13.09,
-            Seq("ACC", unambiguous_dna): 18.94,
-            Seq("TGG", unambiguous_dna): 13.39,
-            Seq("TGA", unambiguous_dna): 1.15,
-            Seq("TGT", unambiguous_dna): 5.86,
-            Seq("TGC", unambiguous_dna): 5.48,
-            Seq("TAG", unambiguous_dna): 0.32,
-            Seq("TAA", unambiguous_dna): 2.00,
-            Seq("TAT", unambiguous_dna): 21.62,
-            Seq("TAC", unambiguous_dna): 11.69,
-            Seq("TTG", unambiguous_dna): 12.91,
-            Seq("TTA", unambiguous_dna): 17.43,
-            Seq("TTT", unambiguous_dna): 24.36,
-            Seq("TTC", unambiguous_dna): 13.95,
-            Seq("TCG", unambiguous_dna): 8.18,
-            Seq("TCA", unambiguous_dna): 13.09,
-            Seq("TCT", unambiguous_dna): 13.08,
-            Seq("TCC", unambiguous_dna): 9.71,
-            Seq("CGG", unambiguous_dna): 7.91,
-            Seq("CGA", unambiguous_dna): 4.81,
-            Seq("CGT", unambiguous_dna): 15.93,
-            Seq("CGC", unambiguous_dna): 14.04,
-            Seq("CAG", unambiguous_dna): 26.74,
-            Seq("CAA", unambiguous_dna): 14.42,
-            Seq("CAT", unambiguous_dna): 12.41,
-            Seq("CAC", unambiguous_dna): 7.34,
-            Seq("CTG", unambiguous_dna): 37.44,
-            Seq("CTA", unambiguous_dna): 5.56,
-            Seq("CTT", unambiguous_dna): 14.51,
-            Seq("CTC", unambiguous_dna): 9.47,
-            Seq("CCG", unambiguous_dna): 14.50,
-            Seq("CCA", unambiguous_dna): 9.11,
-            Seq("CCT", unambiguous_dna): 9.49,
-            Seq("CCC", unambiguous_dna): 6.17,
+            Seq("GGG"): 12.32,
+            Seq("GGA"): 13.61,
+            Seq("GGT"): 23.72,
+            Seq("GGC"): 20.58,
+            Seq("GAG"): 19.37,
+            Seq("GAA"): 35.06,
+            Seq("GAT"): 33.75,
+            Seq("GAC"): 17.86,
+            Seq("GTG"): 19.87,
+            Seq("GTA"): 13.07,
+            Seq("GTT"): 21.56,
+            Seq("GTC"): 13.09,
+            Seq("GCG"): 21.09,
+            Seq("GCA"): 23.00,
+            Seq("GCT"): 18.89,
+            Seq("GCC"): 21.63,
+            Seq("AGG"): 3.96,
+            Seq("AGA"): 7.11,
+            Seq("AGT"): 13.19,
+            Seq("AGC"): 14.27,
+            Seq("AAG"): 15.30,
+            Seq("AAA"): 37.21,
+            Seq("AAT"): 29.32,
+            Seq("AAC"): 20.26,
+            Seq("ATG"): 23.75,
+            Seq("ATA"): 13.33,
+            Seq("ATT"): 29.58,
+            Seq("ATC"): 19.40,
+            Seq("ACG"): 13.64,
+            Seq("ACA"): 15.14,
+            Seq("ACT"): 13.09,
+            Seq("ACC"): 18.94,
+            Seq("TGG"): 13.39,
+            Seq("TGA"): 1.15,
+            Seq("TGT"): 5.86,
+            Seq("TGC"): 5.48,
+            Seq("TAG"): 0.32,
+            Seq("TAA"): 2.00,
+            Seq("TAT"): 21.62,
+            Seq("TAC"): 11.69,
+            Seq("TTG"): 12.91,
+            Seq("TTA"): 17.43,
+            Seq("TTT"): 24.36,
+            Seq("TTC"): 13.95,
+            Seq("TCG"): 8.18,
+            Seq("TCA"): 13.09,
+            Seq("TCT"): 13.08,
+            Seq("TCC"): 9.71,
+            Seq("CGG"): 7.91,
+            Seq("CGA"): 4.81,
+            Seq("CGT"): 15.93,
+            Seq("CGC"): 14.04,
+            Seq("CAG"): 26.74,
+            Seq("CAA"): 14.42,
+            Seq("CAT"): 12.41,
+            Seq("CAC"): 7.34,
+            Seq("CTG"): 37.44,
+            Seq("CTA"): 5.56,
+            Seq("CTT"): 14.51,
+            Seq("CTC"): 9.47,
+            Seq("CCG"): 14.50,
+            Seq("CCA"): 9.11,
+            Seq("CCT"): 9.49,
+            Seq("CCC"): 6.17,
         }
     )

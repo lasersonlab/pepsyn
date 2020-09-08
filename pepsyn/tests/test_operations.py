@@ -15,7 +15,6 @@
 import warnings
 
 import numpy as np
-from Bio.Alphabet.IUPAC import ambiguous_dna, protein, unambiguous_dna
 from Bio.Seq import Seq
 from pytest import raises
 
@@ -39,9 +38,9 @@ from pepsyn.operations import (
     x_to_ggsg,
 )
 
-protein_seq = Seq("METMSDYSKEVSEALSALRGELSALSAAISNTVRAGSYSAPVAKDCKAGHCDSKAVL", protein)
-short_protein_seq = Seq("METMSD", protein)
-all_aa_protein_seq = Seq("ACDEFGHIKLMNPQRSTVWY", protein)
+protein_seq = Seq("METMSDYSKEVSEALSALRGELSALSAAISNTVRAGSYSAPVAKDCKAGHCDSKAVL")
+short_protein_seq = Seq("METMSD")
+all_aa_protein_seq = Seq("ACDEFGHIKLMNPQRSTVWY")
 
 
 class TestTile(object):
@@ -51,10 +50,10 @@ class TestTile(object):
         tiles = [t[2] for t in tile(protein_seq, length, overlap)]
         assert len(tiles) == 3
         assert all([len(t) == length for t in tiles])
-        assert tiles[0] == Seq("METMSDYSKEVSEALSALR", protein)
-        assert tiles[1] == Seq("GELSALSAAISNTVRAGSY", protein)
-        assert tiles[2] == Seq("SAPVAKDCKAGHCDSKAVL", protein)
-        assert sum(tiles, Seq("", protein)) == protein_seq
+        assert tiles[0] == Seq("METMSDYSKEVSEALSALR")
+        assert tiles[1] == Seq("GELSALSAAISNTVRAGSY")
+        assert tiles[2] == Seq("SAPVAKDCKAGHCDSKAVL")
+        assert sum(tiles, Seq("")) == protein_seq
 
     def test_nonoverlapping_imperfect(self):
         length = 25
@@ -62,9 +61,9 @@ class TestTile(object):
         tiles = [t[2] for t in tile(protein_seq, length, overlap)]
         assert len(tiles) == 2
         assert all([len(t) == length for t in tiles])
-        assert tiles[0] == Seq("METMSDYSKEVSEALSALRGELSAL", protein)
-        assert tiles[1] == Seq("SAAISNTVRAGSYSAPVAKDCKAGH", protein)
-        assert sum(tiles, Seq("", protein)) == protein_seq[:50]
+        assert tiles[0] == Seq("METMSDYSKEVSEALSALRGELSAL")
+        assert tiles[1] == Seq("SAAISNTVRAGSYSAPVAKDCKAGH")
+        assert sum(tiles, Seq("")) == protein_seq[:50]
 
     def test_overlapping_perfect(self):
         length = 21
@@ -72,9 +71,9 @@ class TestTile(object):
         tiles = [t[2] for t in tile(protein_seq, length, overlap)]
         assert len(tiles) == 3
         assert all([len(t) == length for t in tiles])
-        assert tiles[0] == Seq("METMSDYSKEVSEALSALRGE", protein)
-        assert tiles[1] == Seq("RGELSALSAAISNTVRAGSYS", protein)
-        assert tiles[2] == Seq("SYSAPVAKDCKAGHCDSKAVL", protein)
+        assert tiles[0] == Seq("METMSDYSKEVSEALSALRGE")
+        assert tiles[1] == Seq("RGELSALSAAISNTVRAGSYS")
+        assert tiles[2] == Seq("SYSAPVAKDCKAGHCDSKAVL")
 
     def test_overlapping_imperfect(self):
         length = 22
@@ -82,8 +81,8 @@ class TestTile(object):
         tiles = [t[2] for t in tile(protein_seq, length, overlap)]
         assert len(tiles) == 2
         assert all([len(t) == length for t in tiles])
-        assert tiles[0] == Seq("METMSDYSKEVSEALSALRGEL", protein)
-        assert tiles[1] == Seq("GELSALSAAISNTVRAGSYSAP", protein)
+        assert tiles[0] == Seq("METMSDYSKEVSEALSALRGEL")
+        assert tiles[1] == Seq("GELSALSAAISNTVRAGSYSAP")
 
     def test_length_longer_than_seq(self):
         length = len(protein_seq) + 5
@@ -142,14 +141,14 @@ class TestSiteRemoval(object):
     # prefix and suffix are each 10 bases, CDS is 18 bases
     cds_start = 10
     cds_end = 28
-    EcoRI = Seq("GAATTC", unambiguous_dna)
-    HindIII = Seq("AAGCTT", unambiguous_dna)
+    EcoRI = Seq("GAATTC")
+    HindIII = Seq("AAGCTT")
     with warnings.catch_warnings():  # biopython Seq.__hash__
         warnings.simplefilter("ignore")
         codon_sampler = FreqWeightedCodonSampler(usage=ecoli_codon_usage)
 
     def test_no_site(self):
-        dna_seq = Seq("GAGATCCGGTCCATATCTTATTCAACGCAAGTTGTTAT", unambiguous_dna)
+        dna_seq = Seq("GAGATCCGGTCCATATCTTATTCAACGCAAGTTGTTAT")
         new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start, self.cds_end
         )
@@ -157,7 +156,7 @@ class TestSiteRemoval(object):
         assert new_seq == dna_seq
 
     def test_with_site_in_cds(self):
-        dna_seq = Seq("GAGATCCGGTCCATATCGAATTCAACGCAAGTTGTTAT", unambiguous_dna)
+        dna_seq = Seq("GAGATCCGGTCCATATCGAATTCAACGCAAGTTGTTAT")
         new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start, self.cds_end
         )
@@ -175,7 +174,7 @@ class TestSiteRemoval(object):
         assert new_trans == orig_trans
 
     def test_with_two_sites_in_cds(self):
-        dna_seq = Seq("GAGATCCGGTCAAGCTTGAATTCAACGCAAGTTGTTAT", unambiguous_dna)
+        dna_seq = Seq("GAGATCCGGTCAAGCTTGAATTCAACGCAAGTTGTTAT")
         new_seq = recode_sites_from_cds(
             dna_seq,
             [self.EcoRI, self.HindIII],
@@ -198,7 +197,7 @@ class TestSiteRemoval(object):
         assert new_trans == orig_trans
 
     def test_with_site_on_left_boundary(self):
-        dna_seq = Seq("GAGATCCGGAATTCATCTTATTCAACGCAAGTTGTTAT", unambiguous_dna)
+        dna_seq = Seq("GAGATCCGGAATTCATCTTATTCAACGCAAGTTGTTAT")
         new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start, self.cds_end
         )
@@ -216,7 +215,7 @@ class TestSiteRemoval(object):
         assert new_trans == orig_trans
 
     def test_with_site_on_left_boundary(self):
-        dna_seq = Seq("GAGATCCGGTCCATATCTTATTCGAATTCAGTTGTTAT", unambiguous_dna)
+        dna_seq = Seq("GAGATCCGGTCCATATCTTATTCGAATTCAGTTGTTAT")
         new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start, self.cds_end
         )
@@ -234,7 +233,7 @@ class TestSiteRemoval(object):
         assert new_trans == orig_trans
 
     def test_with_site_outside_cds(self):
-        dna_seq = Seq("GAGATCCGGTCCATATCTTATTCAACGCAAGAATTCAT", unambiguous_dna)
+        dna_seq = Seq("GAGATCCGGTCCATATCTTATTCAACGCAAGAATTCAT")
         new_seq = recode_site_from_cds(
             dna_seq, self.EcoRI, self.codon_sampler, self.cds_start, self.cds_end
         )
@@ -245,7 +244,7 @@ class TestSiteRemoval(object):
         # NOTE: CDS is different in this test
         cds_start = 10
         cds_end = 27
-        dna_seq = Seq("GAGATCCGGAATTCATCTTATTCAACGAAGTTGTTAT", unambiguous_dna)
+        dna_seq = Seq("GAGATCCGGAATTCATCTTATTCAACGAAGTTGTTAT")
         with raises(PepsynError):
             new_seq = recode_site_from_cds(
                 dna_seq, self.EcoRI, self.codon_sampler, cds_start, cds_end
@@ -254,60 +253,60 @@ class TestSiteRemoval(object):
 
 class TestLinkerReplacement(object):
     def test_null_seq(self):
-        p = Seq("", protein)
+        p = Seq("")
         r = x_to_ggsg(p)
         assert p == r
 
     def test_no_Xs(self):
-        p = Seq("GYTTRS", protein)
+        p = Seq("GYTTRS")
         r = x_to_ggsg(p)
         assert p == r
 
     def test_Xs_prefix(self):
-        p = Seq("XXXGYTTRS", protein)
+        p = Seq("XXXGYTTRS")
         r = x_to_ggsg(p)
-        assert r == Seq("GGSGYTTRS", protein)
+        assert r == Seq("GGSGYTTRS")
 
     def test_Xs_suffix(self):
-        p = Seq("GYTTRSXXXX", protein)
+        p = Seq("GYTTRSXXXX")
         r = x_to_ggsg(p)
-        assert r == Seq("GYTTRSGGSG", protein)
+        assert r == Seq("GYTTRSGGSG")
 
     def test_Xs_infix(self):
-        p = Seq("GYTXXXXXTRS", protein)
+        p = Seq("GYTXXXXXTRS")
         r = x_to_ggsg(p)
-        assert r == Seq("GYTGGSGGTRS", protein)
+        assert r == Seq("GYTGGSGGTRS")
 
     def test_multiple_stretches(self):
-        p = Seq("XGYTXXXTRXXS", protein)
+        p = Seq("XGYTXXXTRXXS")
         r = x_to_ggsg(p)
-        assert r == Seq("GGYTGGSTRGGS", protein)
+        assert r == Seq("GGYTGGSTRGGS")
 
     def test_single_X(self):
-        p = Seq("GYTXTRS", protein)
+        p = Seq("GYTXTRS")
         r = x_to_ggsg(p)
-        assert r == Seq("GYTGTRS", protein)
-        p = Seq("XGYTTRS", protein)
+        assert r == Seq("GYTGTRS")
+        p = Seq("XGYTTRS")
         r = x_to_ggsg(p)
-        assert r == Seq("GGYTTRS", protein)
-        p = Seq("GYTTRSX", protein)
+        assert r == Seq("GGYTTRS")
+        p = Seq("GYTTRSX")
         r = x_to_ggsg(p)
-        assert r == Seq("GYTTRSG", protein)
+        assert r == Seq("GYTTRSG")
 
     def test_double_X(self):
-        p = Seq("GYTXXTRS", protein)
+        p = Seq("GYTXXTRS")
         r = x_to_ggsg(p)
-        assert r == Seq("GYTGGTRS", protein)
+        assert r == Seq("GYTGGTRS")
 
     def test_many_single_Xs(self):
-        p = Seq("GXYTXTXRXS", protein)
+        p = Seq("GXYTXTXRXS")
         r = x_to_ggsg(p)
-        assert r == Seq("GGYTGTGRGS", protein)
+        assert r == Seq("GGYTGTGRGS")
 
     def test_many_Xs(self):
-        p = Seq("GYTXXXXXXXXXTRS", protein)
+        p = Seq("GYTXXXXXXXXXTRS")
         r = x_to_ggsg(p)
-        assert r == Seq("GYTGGSGGGSGGTRS", protein)
+        assert r == Seq("GYTGGSGGGSGGTRS")
 
 
 class TestProteinDisambig(object):
@@ -317,37 +316,37 @@ class TestProteinDisambig(object):
         assert proteins[0] == all_aa_protein_seq
 
     def test_B(self):
-        ambig = Seq("AABAA", protein)
+        ambig = Seq("AABAA")
         disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {"AADAA", "AANAA"}
 
     def test_X(self):
-        ambig = Seq("AAXAA", protein)
+        ambig = Seq("AAXAA")
         disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {"AA{}AA".format(aa) for aa in all_aa_protein_seq}
 
     def test_Z(self):
-        ambig = Seq("AAZAA", protein)
+        ambig = Seq("AAZAA")
         disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {"AAEAA", "AAQAA"}
 
     def test_J(self):
-        ambig = Seq("AAJAA", protein)
+        ambig = Seq("AAJAA")
         disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {"AALAA", "AAIAA"}
 
     def test_U(self):
-        ambig = Seq("AAUAA", protein)
+        ambig = Seq("AAUAA")
         disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {"AACAA"}
 
     def test_O(self):
-        ambig = Seq("AAOAA", protein)
+        ambig = Seq("AAOAA")
         disambig = {str(p) for p in disambiguate_iupac_aa(ambig)}
         assert disambig == {"AAKAA"}
 
     def test_adjacent_ambig(self):
-        ambig = Seq("AAJJAA", protein)
+        ambig = Seq("AAJJAA")
         # map to str here bc of annoying biopython warning when hashing a Seq
         proteins = set(map(str, disambiguate_iupac_aa(ambig)))
         assert len(proteins) == 4
@@ -356,13 +355,13 @@ class TestProteinDisambig(object):
 
 class TestDNADisambig(object):
     def test_unambig_dna(self):
-        unambig_dna_seq = Seq("AGCTTCGAAATGCT", unambiguous_dna)
+        unambig_dna_seq = Seq("AGCTTCGAAATGCT")
         seqs = list(disambiguate_iupac_dna(unambig_dna_seq))
         assert len(seqs) == 1
         assert seqs[0] == unambig_dna_seq
 
     def test_ambig_dna(self):
-        ambig_dna_seq = Seq("NGCTT", ambiguous_dna)
+        ambig_dna_seq = Seq("NGCTT")
         # map to str here bc of annoying biopython warning when hashing a Seq
         seqs = set(map(str, disambiguate_iupac_dna(ambig_dna_seq)))
         assert len(seqs) == 4
@@ -371,37 +370,37 @@ class TestDNADisambig(object):
 
 class TestNumDisambig(object):
     def test_protein(self):
-        assert num_disambiguated_iupac_aa(Seq("AAAAA", protein)) == 1
-        assert num_disambiguated_iupac_aa(Seq("AABAA", protein)) == 2
-        assert num_disambiguated_iupac_aa(Seq("AAXAA", protein)) == 20
-        assert num_disambiguated_iupac_aa(Seq("AAZAA", protein)) == 2
-        assert num_disambiguated_iupac_aa(Seq("AAJAA", protein)) == 2
-        assert num_disambiguated_iupac_aa(Seq("AAUAA", protein)) == 1
-        assert num_disambiguated_iupac_aa(Seq("AAOAA", protein)) == 1
-        assert num_disambiguated_iupac_aa(Seq("AAZAB", protein)) == 4
-        assert num_disambiguated_iupac_aa(Seq("XAZAA", protein)) == 40
+        assert num_disambiguated_iupac_aa(Seq("AAAAA")) == 1
+        assert num_disambiguated_iupac_aa(Seq("AABAA")) == 2
+        assert num_disambiguated_iupac_aa(Seq("AAXAA")) == 20
+        assert num_disambiguated_iupac_aa(Seq("AAZAA")) == 2
+        assert num_disambiguated_iupac_aa(Seq("AAJAA")) == 2
+        assert num_disambiguated_iupac_aa(Seq("AAUAA")) == 1
+        assert num_disambiguated_iupac_aa(Seq("AAOAA")) == 1
+        assert num_disambiguated_iupac_aa(Seq("AAZAB")) == 4
+        assert num_disambiguated_iupac_aa(Seq("XAZAA")) == 40
         assert num_disambiguated_iupac_aa("AABAA") == 2
 
     def test_dna(self):
-        assert num_disambiguated_iupac_dna(Seq("ACGT", ambiguous_dna)) == 1
-        assert num_disambiguated_iupac_dna(Seq("A", ambiguous_dna)) == 1
-        assert num_disambiguated_iupac_dna(Seq("B", ambiguous_dna)) == 3
-        assert num_disambiguated_iupac_dna(Seq("C", ambiguous_dna)) == 1
-        assert num_disambiguated_iupac_dna(Seq("D", ambiguous_dna)) == 3
-        assert num_disambiguated_iupac_dna(Seq("G", ambiguous_dna)) == 1
-        assert num_disambiguated_iupac_dna(Seq("H", ambiguous_dna)) == 3
-        assert num_disambiguated_iupac_dna(Seq("K", ambiguous_dna)) == 2
-        assert num_disambiguated_iupac_dna(Seq("M", ambiguous_dna)) == 2
-        assert num_disambiguated_iupac_dna(Seq("N", ambiguous_dna)) == 4
-        assert num_disambiguated_iupac_dna(Seq("R", ambiguous_dna)) == 2
-        assert num_disambiguated_iupac_dna(Seq("S", ambiguous_dna)) == 2
-        assert num_disambiguated_iupac_dna(Seq("T", ambiguous_dna)) == 1
-        assert num_disambiguated_iupac_dna(Seq("V", ambiguous_dna)) == 3
-        assert num_disambiguated_iupac_dna(Seq("W", ambiguous_dna)) == 2
-        assert num_disambiguated_iupac_dna(Seq("X", ambiguous_dna)) == 4
-        assert num_disambiguated_iupac_dna(Seq("Y", ambiguous_dna)) == 2
-        assert num_disambiguated_iupac_dna(Seq("ACYGT", ambiguous_dna)) == 2
-        assert num_disambiguated_iupac_dna(Seq("NCYGT", ambiguous_dna)) == 8
+        assert num_disambiguated_iupac_dna(Seq("ACGT")) == 1
+        assert num_disambiguated_iupac_dna(Seq("A")) == 1
+        assert num_disambiguated_iupac_dna(Seq("B")) == 3
+        assert num_disambiguated_iupac_dna(Seq("C")) == 1
+        assert num_disambiguated_iupac_dna(Seq("D")) == 3
+        assert num_disambiguated_iupac_dna(Seq("G")) == 1
+        assert num_disambiguated_iupac_dna(Seq("H")) == 3
+        assert num_disambiguated_iupac_dna(Seq("K")) == 2
+        assert num_disambiguated_iupac_dna(Seq("M")) == 2
+        assert num_disambiguated_iupac_dna(Seq("N")) == 4
+        assert num_disambiguated_iupac_dna(Seq("R")) == 2
+        assert num_disambiguated_iupac_dna(Seq("S")) == 2
+        assert num_disambiguated_iupac_dna(Seq("T")) == 1
+        assert num_disambiguated_iupac_dna(Seq("V")) == 3
+        assert num_disambiguated_iupac_dna(Seq("W")) == 2
+        assert num_disambiguated_iupac_dna(Seq("X")) == 4
+        assert num_disambiguated_iupac_dna(Seq("Y")) == 2
+        assert num_disambiguated_iupac_dna(Seq("ACYGT")) == 2
+        assert num_disambiguated_iupac_dna(Seq("NCYGT")) == 8
 
 
 class TestPad(object):

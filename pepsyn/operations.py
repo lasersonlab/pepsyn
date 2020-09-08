@@ -93,7 +93,7 @@ def reverse_translate(seq, codon_sampler):
     codons = []
     for aa in seq:
         codons.append(codon_sampler.sample_codon(aa))
-    return sum(codons, Seq("", codon_sampler.nucleotide_alphabet))
+    return sum(codons, Seq(""))
 
 
 def _ggsg_generator():

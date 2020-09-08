@@ -16,8 +16,6 @@ import collections
 import itertools
 
 import numpy as np
-from Bio.Alphabet import _verify_alphabet
-from Bio.Alphabet.IUPAC import unambiguous_dna
 from Bio.Restriction.Restriction import enzymedict
 from Bio.Seq import Seq
 
@@ -32,11 +30,11 @@ def site2dna(site):
     convert to DNA sequence and checks strict alphabet
     """
     if site in enzymedict:
-        dna = Seq(enzymedict[site]["site"], unambiguous_dna)
+        dna = Seq(enzymedict[site]["site"])
     else:
-        dna = Seq(site, unambiguous_dna)
-    if not _verify_alphabet(dna):
-        raise ValueError("site is not recognized enzyme and not strict DNA")
+        dna = Seq(site)
+    if not (set(dna.upper()) <= {"A", "C", "G", "T"}):
+        raise ValueError(f"site {dna} is not recognized enzyme and not strict DNA")
     return dna
 
 
